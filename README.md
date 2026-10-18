@@ -2,12 +2,15 @@
 
 Serviço de autenticação de clientes por CPF, preparado para AWS Lambda. Este repositório começa com um handler local e uma verificação de saúde; o fluxo de autenticação fica na issue #2.
 
-## Arquitetura inicial
+## Arquitetura
 
 - `src/lambda_auth/handler.py` é o entrypoint da Lambda e compõe os componentes.
 - `adapters/api_gateway.py` converte eventos HTTP v1/v2 do API Gateway para o contrato interno.
 - `application/ports/application.py` define a porta chamada pelo adaptador.
-- `application/health.py` contém o caso de uso inicial, sem dependências externas.
+- `application/health.py` contém o caso de uso de saúde.
+- `application/authentication.py` valida o CPF, consulta a porta de clientes ativos e monta as claims permitidas.
+- `adapters/postgres_customer_repository.py` consulta apenas o ID de clientes ativos na tabela compartilhada.
+- `adapters/kms_token_signer.py` prepara a assinatura RS256 e o JWKS via KMS.
 
 O handler não registra nem devolve o evento recebido. O exemplo local contém somente uma chamada GET para `/health`.
 
@@ -31,13 +34,15 @@ python -m pip install -e ".[dev]"
 
 ## Configuração local
 
-`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente.
+`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente. Forneça `DATABASE_URL` por configuração segura. A Function precisa de `JWT_KMS_KEY_ID`, `JWT_KID`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS` e `AWS_REGION` para emitir tokens. O emissor e a audiência do exemplo são placeholders e devem ser alinhados com o grupo. A assinatura via KMS segue a proposta do ADR e ainda precisa ser conciliada com a nota técnica da issue #64 sobre secret externo.
 
 ```powershell
 $env:LOG_LEVEL = "INFO"
 ```
 
 `LOG_LEVEL` aceita `DEBUG`, `INFO`, `WARNING`, `ERROR` ou `CRITICAL`; o padrão é `WARNING`.
+
+O TTL aceita valores entre 1 e 900 segundos e usa 900 por padrão. O endpoint de autenticação retorna `503` quando a configuração necessária está ausente.
 
 ## Exercitar o handler localmente
 
@@ -53,7 +58,9 @@ Em Linux ou macOS:
 python -m lambda_auth.local < examples/events/health-v2.json
 ```
 
-O comando imprime a resposta no formato do API Gateway. Ele não precisa de conta, credenciais, SDK ou recursos AWS.
+O comando imprime a resposta no formato do API Gateway para a verificação de saúde. O fluxo de autenticação e o endpoint JWKS usam PostgreSQL e AWS KMS quando configurados; os testes usam fakes e não fazem chamadas AWS.
+
+O handler expõe `POST /auth/customer/token` com corpo JSON `{ "cpf": "..." }` e `GET /.well-known/jwks.json`. CPF inválido retorna `422`; cliente inexistente ou inativo retorna a mesma resposta `401`; falhas de dependência retornam `503` sem detalhes internos.
 
 ## Verificações
 
