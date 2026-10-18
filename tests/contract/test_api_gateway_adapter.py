@@ -23,8 +23,16 @@ class FakeApplication:
     ("event", "expected_request"),
     [
         (
-            {"httpMethod": "get", "path": "/health", "body": "sensitive input"},
-            HttpRequest(method="GET", path="/health"),
+            {
+                "httpMethod": "get",
+                "path": "/health",
+                "body": json.dumps({"cpf": "529.982.247-25"}),
+            },
+            HttpRequest(
+                method="GET",
+                path="/health",
+                body=MappingProxyType({"cpf": "529.982.247-25"}),
+            ),
         ),
         (
             {
@@ -45,13 +53,21 @@ def test_adapter_maps_api_gateway_events_without_echoing_input(
     assert result["statusCode"] == 200
     assert result["headers"]["content-type"] == "application/json; charset=utf-8"
     assert json.loads(result["body"]) == {"method": "GET", "path": "/health"}
-    assert "sensitive input" not in json.dumps(result)
+    assert "529.982.247-25" not in json.dumps(result)
     assert result["isBase64Encoded"] is False
 
 
 @pytest.mark.parametrize(
     "event",
-    [None, [], {}, {"httpMethod": "GET"}, {"httpMethod": "GET", "path": "health"}],
+    [
+        None,
+        [],
+        {},
+        {"httpMethod": "GET"},
+        {"httpMethod": "GET", "path": "health"},
+        {"httpMethod": "GET", "path": "/health", "body": "not-json"},
+        {"httpMethod": "GET", "path": "/health", "body": []},
+    ],
 )
 def test_adapter_rejects_malformed_events_without_calling_application(
     event: object,

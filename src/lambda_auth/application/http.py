@@ -11,16 +11,18 @@ DEFAULT_HEADERS: Mapping[str, str] = MappingProxyType(
         "x-content-type-options": "nosniff",
     }
 )
+EMPTY_BODY: Mapping[str, object] = MappingProxyType({})
 
 
 @dataclass(frozen=True, slots=True)
 class HttpRequest:
     method: str
     path: str
+    body: Mapping[str, object] = field(default_factory=lambda: EMPTY_BODY)
 
 
 @dataclass(frozen=True, slots=True)
 class HttpResponse:
     status_code: int
-    body: Mapping[str, str]
+    body: Mapping[str, object]
     headers: Mapping[str, str] = field(default_factory=lambda: DEFAULT_HEADERS)
