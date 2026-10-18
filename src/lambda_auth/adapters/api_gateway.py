@@ -1,5 +1,7 @@
 """Adaptador de eventos HTTP do API Gateway para a porta da aplicação."""
 
+import base64
+import binascii
 import json
 from collections.abc import Mapping
 from types import MappingProxyType
@@ -40,7 +42,32 @@ def _request_from_event(event: object) -> HttpRequest | None:
     if not isinstance(path, str) or not path.startswith("/"):
         return None
 
-    return HttpRequest(method.strip().upper(), path)
+    body = _body_from_event(event)
+    if body is None:
+        return None
+    return HttpRequest(method.strip().upper(), path, body)
+
+
+def _body_from_event(event: Mapping[str, object]) -> Mapping[str, object] | None:
+    raw_body = event.get("body")
+    if raw_body is None or raw_body == "":
+        return MappingProxyType({})
+    if not isinstance(raw_body, str):
+        return None
+
+    try:
+        body_bytes = (
+            base64.b64decode(raw_body, validate=True)
+            if event.get("isBase64Encoded") is True
+            else raw_body.encode("utf-8")
+        )
+        parsed_body = json.loads(body_bytes.decode("utf-8"))
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(parsed_body, Mapping):
+        return None
+    return MappingProxyType(dict(parsed_body))
 
 
 def _to_api_gateway_response(response: HttpResponse) -> dict[str, object]:
