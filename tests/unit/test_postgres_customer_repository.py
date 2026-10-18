@@ -40,6 +40,16 @@ class FakeConnection:
         return self._cursor
 
 
+class FakeDatabaseUrlProvider:
+    def __init__(self, database_url: str) -> None:
+        self.database_url = database_url
+        self.calls = 0
+
+    def get_database_url(self) -> str:
+        self.calls += 1
+        return self.database_url
+
+
 def _connect_factory(
     cursor: FakeCursor,
     captured: dict[str, object],
@@ -78,6 +88,20 @@ def test_repository_returns_none_for_missing_or_inactive_customer() -> None:
     )
 
     assert repository.find_active_customer_id_by_cpf("52998224725") is None
+
+
+def test_repository_obtains_url_from_provider_for_each_connection() -> None:
+    cursor = FakeCursor((42,))
+    provider = FakeDatabaseUrlProvider("postgresql://localhost/auto_shop")
+    captured: dict[str, object] = {}
+    repository = PostgresCustomerRepository(
+        connect=_connect_factory(cursor, captured),
+        database_url_provider=provider,
+    )
+
+    assert repository.find_active_customer_id_by_cpf("52998224725") == 42
+    assert provider.calls == 1
+    assert captured["database_url"] == "postgresql://localhost/auto_shop"
 
 
 def test_repository_rejects_missing_connection_configuration() -> None:

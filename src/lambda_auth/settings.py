@@ -10,6 +10,7 @@ _ALLOWED_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
 class Settings:
     log_level: str
     database_url: str = field(default="", repr=False)
+    database_secret_arn: str = field(default="", repr=False)
     jwt_issuer: str = ""
     jwt_audience: str = ""
     jwt_ttl_seconds: int = 900
@@ -21,7 +22,7 @@ class Settings:
     def auth_configured(self) -> bool:
         return all(
             (
-                self.database_url,
+                self.database_url or self.database_secret_arn,
                 self.jwt_issuer,
                 self.jwt_audience,
                 1 <= self.jwt_ttl_seconds <= 900,
@@ -48,6 +49,7 @@ class Settings:
         return cls(
             log_level=log_level,
             database_url=os.environ.get("DATABASE_URL", "").strip(),
+            database_secret_arn=os.environ.get("DATABASE_SECRET_ARN", "").strip(),
             jwt_issuer=os.environ.get("JWT_ISSUER", "").strip(),
             jwt_audience=os.environ.get("JWT_AUDIENCE", "").strip(),
             jwt_ttl_seconds=jwt_ttl_seconds,

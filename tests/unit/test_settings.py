@@ -44,6 +44,23 @@ def test_settings_load_auth_configuration_without_exposing_database_url(
     assert "postgresql://" not in repr(settings)
 
 
+def test_settings_accept_database_secret_arn_without_database_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "DATABASE_SECRET_ARN",
+        "arn:aws:secretsmanager:local:000000000000:secret:test",
+    )
+    monkeypatch.setenv("JWT_ISSUER", "https://auth.example.invalid")
+    monkeypatch.setenv("JWT_AUDIENCE", "auto-shop-api")
+    monkeypatch.setenv("JWT_KID", "test-key")
+    monkeypatch.setenv("JWT_KMS_KEY_ID", "test-kms-key")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+
+    assert Settings.from_environment().auth_configured
+
+
 @pytest.mark.parametrize("value", ["zero", "0", "901"])
 def test_settings_reject_invalid_or_overlong_ttl(
     monkeypatch: pytest.MonkeyPatch,

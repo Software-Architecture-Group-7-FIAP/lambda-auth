@@ -34,7 +34,7 @@ python -m pip install -e ".[dev]"
 
 ## Configuração local
 
-`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente. Forneça `DATABASE_URL` por configuração segura. A Function precisa de `JWT_KMS_KEY_ID`, `JWT_KID`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS` e `AWS_REGION` para emitir tokens. O emissor e a audiência do exemplo são placeholders e devem ser alinhados com o grupo. A assinatura via KMS segue a proposta do ADR e ainda precisa ser conciliada com a nota técnica da issue #64 sobre secret externo.
+`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente. Em desenvolvimento local, use `DATABASE_URL` no ambiente. Na Lambda, informe `DATABASE_SECRET_ARN`; o handler busca a URL no Secrets Manager e mantém um cache em memória por cinco minutos. A Function precisa de `JWT_KMS_KEY_ID`, `JWT_KID`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS` e `AWS_REGION` para emitir tokens. O emissor e a audiência do exemplo são placeholders e devem ser alinhados com o grupo. A assinatura via KMS segue a proposta do ADR e ainda precisa ser conciliada com a nota técnica da issue #64 sobre secret externo.
 
 ```powershell
 $env:LOG_LEVEL = "INFO"
