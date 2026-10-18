@@ -25,6 +25,14 @@ jobs:
       - name: Install project and development tools
         run: python -m pip install -e ".[dev]"
 
+      - name: Build Lambda deployment package
+        run: |
+          python -m pip install --no-compile --target build/lambda .
+          mkdir -p dist
+          cd build/lambda
+          zip -q -r ../../dist/lambda-auth.zip .
+          test -s ../../dist/lambda-auth.zip
+
       - name: Check formatting
         run: python -m ruff format --check .
 
@@ -33,3 +41,31 @@ jobs:
 
       - name: Run offline tests
         run: python -m pytest --cov=lambda_auth --cov-report=term-missing --cov-fail-under=80
+
+  terraform-static-validation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90e1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialize providers without backend
+        run: terraform init -backend=false -input=false -lockfile=readonly
+
+      - name: Validate Terraform configuration
+        run: terraform validate -no-color

@@ -44,6 +44,10 @@ $env:LOG_LEVEL = "INFO"
 
 O TTL aceita valores entre 1 e 900 segundos e usa 900 por padrão. O endpoint de autenticação retorna `503` quando a configuração necessária está ausente.
 
+## Preparação de infraestrutura
+
+O módulo Terraform em [`infra/terraform`](infra/terraform/README.md) configura a Lambda, a role com permissões mínimas e a retenção de logs. Conta, região, segredo, chave KMS, rede e contrato JWT são entradas que precisam ser confirmadas com a equipe responsável antes de provisionar. O CI valida e empacota o serviço sem credenciais AWS; nenhuma função ou recurso AWS é criado por ele.
+
 ## Exercitar o handler localmente
 
 No PowerShell:
