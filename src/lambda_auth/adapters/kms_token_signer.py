@@ -5,10 +5,16 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from botocore.config import Config
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 _KMS_SIGNING_ALGORITHM = "RSASSA_PKCS1_V1_5_SHA_256"
+_AWS_CLIENT_CONFIG = Config(
+    connect_timeout=1,
+    read_timeout=3,
+    retries={"mode": "standard", "total_max_attempts": 1},
+)
 
 
 class KmsTokenSigner:
@@ -78,7 +84,11 @@ class KmsTokenSigner:
         if self._kms_client is None:
             import boto3
 
-            self._kms_client = boto3.client("kms", region_name=self._region)
+            self._kms_client = boto3.client(
+                "kms",
+                region_name=self._region,
+                config=_AWS_CLIENT_CONFIG,
+            )
         return self._kms_client
 
 
