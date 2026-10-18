@@ -40,11 +40,11 @@ Copie `terraform.tfvars.example` para um arquivo local `terraform.tfvars` e pree
 
 ```bash
 terraform fmt -check -recursive
-terraform init -backend=false -input=false
+terraform init -backend=false -input=false -lockfile=readonly
 terraform validate -no-color
 ```
 
-O job `terraform-static-validation` executa esses comandos sem credenciais AWS, sem backend remoto e sem gerar plano ou aplicar recursos. O arquivo de lock do provider deve ser revisado e versionado após o primeiro `terraform init` controlado.
+O job `terraform-static-validation` executa esses comandos sem credenciais AWS, sem backend remoto e sem gerar plano ou aplicar recursos. O lockfile do provider está versionado para fixar a versão e os checksums; revise-o ao atualizar a restrição do provider.
 
 ## Inventário e remoção
 
