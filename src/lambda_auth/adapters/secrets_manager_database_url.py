@@ -5,6 +5,14 @@ from collections.abc import Callable, Mapping
 from time import monotonic
 from typing import Any
 
+from botocore.config import Config
+
+_AWS_CLIENT_CONFIG = Config(
+    connect_timeout=1,
+    read_timeout=3,
+    retries={"mode": "standard", "total_max_attempts": 1},
+)
+
 
 class SecretsManagerDatabaseUrl:
     def __init__(
@@ -52,6 +60,7 @@ class SecretsManagerDatabaseUrl:
             self._secrets_client = boto3.client(
                 "secretsmanager",
                 region_name=self._region,
+                config=_AWS_CLIENT_CONFIG,
             )
         return self._secrets_client
 
