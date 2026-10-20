@@ -1,0 +1,17 @@
+aws_region          = "<approved-region>"
+expected_account_id = "<12-digit-account-id>"
+environment         = "homolog"
+lambda_package_path = "../../dist/lambda-auth.zip"
+
+database_secret_arn = "arn:aws:secretsmanager:<region>:<account-id>:secret:<secret-name>"
+jwt_kms_key_arn     = "arn:aws:kms:<region>:<account-id>:key/<key-id>"
+jwt_kid             = "<approved-key-id>"
+jwt_issuer          = "https://<approved-issuer>"
+jwt_audience        = "<approved-audience>"
+
+# For a database reachable only inside a VPC, provide both lists.
+private_subnet_ids = []
+security_group_ids = []
+
+# Set only when the database secret uses a customer-managed KMS key.
+database_secret_kms_key_arn = ""

@@ -13,20 +13,32 @@ from lambda_auth.settings import Settings
 
 
 class FakeCustomerRepository:
-    def __init__(self, customer_id: int | None = 42) -> None:
+    def __init__(
+        self,
+        customer_id: int | None = 42,
+        error: Exception | None = None,
+    ) -> None:
         self.customer_id = customer_id
+        self.error = error
         self.lookups: list[str] = []
 
     def find_active_customer_id_by_cpf(self, cpf: str) -> int | None:
         self.lookups.append(cpf)
+        if self.error is not None:
+            raise self.error
         return self.customer_id
 
 
 class FakeTokenSigner:
-    def __init__(self) -> None:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
         self.claims: Mapping[str, object] | None = None
+        self.issue_calls = 0
 
     def issue(self, claims: Mapping[str, object]) -> str:
+        self.issue_calls += 1
+        if self.error is not None:
+            raise self.error
         self.claims = MappingProxyType(dict(claims))
         return "test-token"
 
@@ -78,6 +90,7 @@ def test_api_gateway_contract_authenticates_customer_without_echoing_cpf() -> No
     }
     assert repository.lookups == ["52998224725"]
     assert "529.982.247-25" not in json.dumps(result)
+    assert "52998224725" not in json.dumps(result)
     assert "test-token" not in str(signer.claims)
 
 
@@ -99,7 +112,7 @@ def test_api_gateway_contract_accepts_base64_encoded_request_body() -> None:
     assert repository.lookups == ["52998224725"]
 
 
-@pytest.mark.parametrize("body", ["not-json", "[]"])
+@pytest.mark.parametrize("body", ["not-json", "[]", "null", '"text"', "42", "true"])
 def test_malformed_json_body_is_rejected_before_use_case(body: str) -> None:
     repository = FakeCustomerRepository()
     signer = FakeTokenSigner()
@@ -115,6 +128,88 @@ def test_malformed_json_body_is_rejected_before_use_case(body: str) -> None:
     assert json.loads(result["body"]) == {"error": "invalid_request"}
     assert repository.lookups == []
     assert signer.claims is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({}, id="absent-cpf"),
+        pytest.param({"cpf": None}, id="null-cpf"),
+        pytest.param({"cpf": 52998224725}, id="numeric-cpf"),
+        pytest.param({"cpf": ["52998224725"]}, id="array-cpf"),
+        pytest.param({"cpf": "529.982.247-26"}, id="invalid-cpf"),
+    ],
+)
+def test_missing_or_non_string_cpf_is_rejected_before_lookup_or_signing(
+    payload: dict[str, object],
+) -> None:
+    repository = FakeCustomerRepository()
+    signer = FakeTokenSigner()
+    event = {
+        "httpMethod": "POST",
+        "path": "/auth/customer/token",
+        "body": json.dumps(payload),
+    }
+
+    result = _adapter(repository, signer).handle(event)
+
+    assert result["statusCode"] == 422
+    assert json.loads(result["body"]) == {"error": "invalid_cpf"}
+    assert repository.lookups == []
+    assert signer.issue_calls == 0
+    if isinstance(payload.get("cpf"), str):
+        assert payload["cpf"] not in json.dumps(result)
+
+
+def test_unknown_customer_receives_generic_response_without_signing_or_cpf_leakage() -> None:
+    cpf = "529.982.247-25"
+    repository = FakeCustomerRepository(customer_id=None)
+    signer = FakeTokenSigner()
+    event = {
+        "httpMethod": "POST",
+        "path": "/auth/customer/token",
+        "body": json.dumps({"cpf": cpf}),
+    }
+
+    result = _adapter(repository, signer).handle(event)
+    serialized_result = json.dumps(result)
+
+    assert result["statusCode"] == 401
+    assert json.loads(result["body"]) == {"error": "invalid_credentials"}
+    assert repository.lookups == ["52998224725"]
+    assert signer.issue_calls == 0
+    assert cpf not in serialized_result
+    assert "52998224725" not in serialized_result
+
+
+@pytest.mark.parametrize("failure_source", ["repository", "signer"])
+def test_dependency_failures_return_generic_response_without_leaking_details_or_cpf(
+    failure_source: str,
+) -> None:
+    cpf = "529.982.247-25"
+    failure = RuntimeError(f"{failure_source} internal detail")
+    repository = FakeCustomerRepository(error=failure if failure_source == "repository" else None)
+    signer = FakeTokenSigner(error=failure if failure_source == "signer" else None)
+    event = {
+        "httpMethod": "POST",
+        "path": "/auth/customer/token",
+        "body": json.dumps({"cpf": cpf}),
+    }
+
+    result = _adapter(repository, signer).handle(event)
+    serialized_result = json.dumps(result)
+
+    assert result["statusCode"] == 503
+    assert json.loads(result["body"]) == {"error": "service_unavailable"}
+    assert failure.args[0] not in serialized_result
+    assert cpf not in serialized_result
+    assert "52998224725" not in serialized_result
+    if failure_source == "repository":
+        assert repository.lookups == ["52998224725"]
+        assert signer.issue_calls == 0
+    else:
+        assert repository.lookups == ["52998224725"]
+        assert signer.issue_calls == 1
 
 
 def test_jwks_endpoint_returns_public_keys_with_cache_headers() -> None:
