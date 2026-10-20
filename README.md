@@ -1,6 +1,6 @@
 # lambda-auth
 
-Serviço de autenticação de clientes por CPF, preparado para AWS Lambda. Este repositório começa com um handler local e uma verificação de saúde; o fluxo de autenticação fica na issue #2.
+Serviço de autenticação de clientes por CPF, preparado para AWS Lambda. O endpoint `POST /auth/customer/token` valida o CPF, verifica se o cliente está ativo e emite um JWT.
 
 ## Arquitetura
 

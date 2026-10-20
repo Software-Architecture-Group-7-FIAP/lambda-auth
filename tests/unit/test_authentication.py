@@ -105,15 +105,18 @@ def test_invalid_cpf_does_not_query_repository_or_sign_token() -> None:
 
 @pytest.mark.parametrize("customer_id", [None])
 def test_unknown_and_inactive_customers_share_public_response(customer_id: int | None) -> None:
+    first_signer = FakeTokenSigner()
+    second_signer = FakeTokenSigner()
     first = AuthenticateCustomer(
-        FakeCustomerRepository(customer_id), FakeTokenSigner(), _settings()
+        FakeCustomerRepository(customer_id), first_signer, _settings()
     ).execute("52998224725")
     second = AuthenticateCustomer(
-        FakeCustomerRepository(customer_id), FakeTokenSigner(), _settings()
+        FakeCustomerRepository(customer_id), second_signer, _settings()
     ).execute("11144477735")
 
     assert first.status_code == second.status_code == 401
     assert first.body == second.body == {"error": "invalid_credentials"}
+    assert first_signer.claims is second_signer.claims is None
 
 
 def test_repository_failure_returns_generic_service_error() -> None:
