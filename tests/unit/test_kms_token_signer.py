@@ -106,3 +106,29 @@ def test_signer_rejects_incomplete_configuration() -> None:
 
     with pytest.raises(RuntimeError, match="configuration"):
         signer.issue({"sub": "42"})
+
+
+def test_aws_client_uses_bounded_network_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
+    import boto3
+
+    captured: dict[str, object] = {}
+
+    class Client:
+        def sign(self, **request: object) -> Mapping[str, object]:
+            assert request["KeyId"] == "test-kms-key"
+            return {"Signature": b"signature"}
+
+    def create_client(service_name: str, **kwargs: object) -> Client:
+        captured["service_name"] = service_name
+        captured.update(kwargs)
+        return Client()
+
+    monkeypatch.setattr(boto3, "client", create_client)
+
+    KmsTokenSigner("test-kms-key", "test-kid", "us-east-1").issue({"sub": "42"})
+
+    config = captured["config"]
+    assert captured["service_name"] == "kms"
+    assert config.connect_timeout == 1
+    assert config.read_timeout == 3
+    assert config.retries["total_max_attempts"] == 1

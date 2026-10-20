@@ -1,6 +1,6 @@
 # lambda-auth
 
-Serviço de autenticação de clientes por CPF, preparado para AWS Lambda. Este repositório começa com um handler local e uma verificação de saúde; o fluxo de autenticação fica na issue #2.
+Serviço de autenticação de clientes por CPF, preparado para AWS Lambda. O endpoint `POST /auth/customer/token` valida o CPF, verifica se o cliente está ativo e emite um JWT.
 
 ## Arquitetura
 
@@ -43,6 +43,10 @@ $env:LOG_LEVEL = "INFO"
 `LOG_LEVEL` aceita `DEBUG`, `INFO`, `WARNING`, `ERROR` ou `CRITICAL`; o padrão é `WARNING`.
 
 O TTL aceita valores entre 1 e 900 segundos e usa 900 por padrão. O endpoint de autenticação retorna `503` quando a configuração necessária está ausente.
+
+## Preparação de infraestrutura
+
+O módulo Terraform em [`infra/terraform`](infra/terraform/README.md) configura a Lambda, a role com permissões mínimas e a retenção de logs. Conta, região, segredo, chave KMS, rede e contrato JWT são entradas que precisam ser confirmadas com a equipe responsável antes de provisionar. O CI valida e empacota o serviço sem credenciais AWS; nenhuma função ou recurso AWS é criado por ele.
 
 ## Exercitar o handler localmente
 

@@ -69,3 +69,29 @@ def test_provider_rejects_incomplete_configuration_before_aws_call() -> None:
 
     with pytest.raises(RuntimeError, match="configuration"):
         provider.get_database_url()
+
+
+def test_aws_client_uses_bounded_network_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
+    import boto3
+
+    captured: dict[str, object] = {}
+
+    class Client:
+        def get_secret_value(self, *, SecretId: str) -> dict[str, str]:
+            assert SecretId == "secret-arn"
+            return {"SecretString": "postgresql://localhost/auto_shop"}
+
+    def create_client(service_name: str, **kwargs: object) -> Client:
+        captured["service_name"] = service_name
+        captured.update(kwargs)
+        return Client()
+
+    monkeypatch.setattr(boto3, "client", create_client)
+
+    SecretsManagerDatabaseUrl("secret-arn", "us-east-1").get_database_url()
+
+    config = captured["config"]
+    assert captured["service_name"] == "secretsmanager"
+    assert config.connect_timeout == 1
+    assert config.read_timeout == 3
+    assert config.retries["total_max_attempts"] == 1
