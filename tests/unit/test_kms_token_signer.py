@@ -10,16 +10,18 @@ from lambda_auth.adapters.kms_token_signer import KmsTokenSigner
 
 
 class FakeKmsClient:
-    def __init__(self, private_key: rsa.RSAPrivateKey) -> None:
-        self.private_key = private_key
+    def __init__(self, private_keys: Mapping[str, rsa.RSAPrivateKey]) -> None:
+        self.private_keys = private_keys
         self.sign_request: dict[str, object] | None = None
-        self.public_key_calls = 0
+        self.public_key_calls: list[str] = []
 
     def sign(self, **request: object) -> Mapping[str, object]:
         self.sign_request = request
         message = request["Message"]
         assert isinstance(message, bytes)
-        signature = self.private_key.sign(
+        key_id = request["KeyId"]
+        assert isinstance(key_id, str)
+        signature = self.private_keys[key_id].sign(
             message,
             padding.PKCS1v15(),
             hashes.SHA256(),
@@ -27,11 +29,16 @@ class FakeKmsClient:
         return {"Signature": signature}
 
     def get_public_key(self, **request: object) -> Mapping[str, object]:
-        self.public_key_calls += 1
-        assert request["KeyId"] == "test-kms-key"
-        public_key = self.private_key.public_key().public_bytes(
-            encoding=serialization.Encoding.DER,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        key_id = request["KeyId"]
+        assert isinstance(key_id, str)
+        self.public_key_calls.append(key_id)
+        public_key = (
+            self.private_keys[key_id]
+            .public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
         )
         return {"PublicKey": public_key}
 
@@ -46,7 +53,7 @@ def _decode_segment(segment: str) -> bytes:
 
 
 def test_signer_issues_verifiable_rs256_jwt(private_key: rsa.RSAPrivateKey) -> None:
-    kms_client = FakeKmsClient(private_key)
+    kms_client = FakeKmsClient({"test-kms-key": private_key})
     signer = KmsTokenSigner("test-kms-key", "test-kid", "us-east-1", kms_client)
     claims = {
         "sub": "42",
@@ -83,7 +90,7 @@ def test_signer_issues_verifiable_rs256_jwt(private_key: rsa.RSAPrivateKey) -> N
 
 
 def test_signer_publishes_cached_rsa_jwks(private_key: rsa.RSAPrivateKey) -> None:
-    kms_client = FakeKmsClient(private_key)
+    kms_client = FakeKmsClient({"test-kms-key": private_key})
     signer = KmsTokenSigner("test-kms-key", "test-kid", "us-east-1", kms_client)
 
     jwks = signer.get_jwks()
@@ -98,7 +105,49 @@ def test_signer_publishes_cached_rsa_jwks(private_key: rsa.RSAPrivateKey) -> Non
     assert "e" in key
     assert "d" not in key
     assert repeated_jwks == jwks
-    assert kms_client.public_key_calls == 1
+    assert kms_client.public_key_calls == ["test-kms-key"]
+
+
+def test_signer_publishes_active_then_sorted_additional_keys_and_caches_each() -> None:
+    keys = {
+        key_id: rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        for key_id in ("kms-active", "kms-old", "kms-next")
+    }
+    kms_client = FakeKmsClient(keys)
+    signer = KmsTokenSigner(
+        "kms-active",
+        "active",
+        "us-east-1",
+        kms_client,
+        additional_public_keys=(("old-z", "kms-old"), ("next-a", "kms-next")),
+    )
+
+    first = signer.get_jwks()
+    first["keys"][0]["kid"] = "mutated"
+    second = signer.get_jwks()
+
+    assert [key["kid"] for key in second["keys"]] == ["active", "next-a", "old-z"]
+    assert all(set(key) == {"kty", "use", "alg", "kid", "n", "e"} for key in second["keys"])
+    assert kms_client.public_key_calls == ["kms-active", "kms-next", "kms-old"]
+
+    signer.issue({"sub": "42"})
+    assert kms_client.sign_request is not None
+    assert kms_client.sign_request["KeyId"] == "kms-active"
+
+
+def test_signer_fails_complete_jwks_when_any_public_key_cannot_be_loaded() -> None:
+    active = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    kms_client = FakeKmsClient({"kms-active": active})
+    signer = KmsTokenSigner(
+        "kms-active",
+        "active",
+        "us-east-1",
+        kms_client,
+        additional_public_keys=(("missing", "kms-missing"),),
+    )
+
+    with pytest.raises(KeyError):
+        signer.get_jwks()
 
 
 def test_signer_rejects_incomplete_configuration() -> None:

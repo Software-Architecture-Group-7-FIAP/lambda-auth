@@ -6,6 +6,7 @@ lambda_package_path = "../../dist/lambda-auth.zip"
 database_secret_arn = "arn:aws:secretsmanager:<region>:<account-id>:secret:<secret-name>"
 jwt_kms_key_arn     = "arn:aws:kms:<region>:<account-id>:key/<key-id>"
 jwt_kid             = "<approved-key-id>"
+jwt_additional_public_keys = []
 jwt_issuer          = "https://<approved-issuer>"
 jwt_audience        = "<approved-audience>"
 

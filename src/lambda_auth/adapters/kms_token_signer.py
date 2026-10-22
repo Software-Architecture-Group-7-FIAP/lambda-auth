@@ -24,12 +24,18 @@ class KmsTokenSigner:
         jwt_kid: str,
         region: str,
         kms_client: Any | None = None,
+        *,
+        additional_public_keys: tuple[tuple[str, str], ...] = (),
     ) -> None:
         self._kms_key_id = kms_key_id
         self._jwt_kid = jwt_kid
         self._region = region
         self._kms_client = kms_client
-        self._public_jwk: dict[str, str] | None = None
+        self._public_keys = (
+            (self._jwt_kid, self._kms_key_id),
+            *tuple(sorted(additional_public_keys, key=lambda key: key[0])),
+        )
+        self._public_jwks: dict[tuple[str, str], dict[str, str]] = {}
 
     def issue(self, claims: Mapping[str, object]) -> str:
         self._ensure_configured()
@@ -50,31 +56,39 @@ class KmsTokenSigner:
 
     def get_jwks(self) -> Mapping[str, object]:
         self._ensure_configured()
-        if self._public_jwk is None:
-            result = self._client().get_public_key(KeyId=self._kms_key_id)
-            der_public_key = result.get("PublicKey")
-            if not isinstance(der_public_key, bytes):
-                raise RuntimeError("KMS did not return a public key")
+        keys = [self._public_jwk(kid, kms_key_id) for kid, kms_key_id in self._public_keys]
+        return {"keys": [key.copy() for key in keys]}
 
-            public_key = serialization.load_der_public_key(der_public_key)
-            if not isinstance(public_key, rsa.RSAPublicKey):
-                raise RuntimeError("KMS key must be an RSA public key")
+    def _public_jwk(self, kid: str, kms_key_id: str) -> dict[str, str]:
+        cache_key = (kid, kms_key_id)
+        cached = self._public_jwks.get(cache_key)
+        if cached is not None:
+            return cached
 
-            public_numbers = public_key.public_numbers()
-            self._public_jwk = {
-                "kty": "RSA",
-                "use": "sig",
-                "alg": "RS256",
-                "kid": self._jwt_kid,
-                "n": _base64url(
-                    public_numbers.n.to_bytes((public_numbers.n.bit_length() + 7) // 8, "big")
-                ),
-                "e": _base64url(
-                    public_numbers.e.to_bytes((public_numbers.e.bit_length() + 7) // 8, "big")
-                ),
-            }
+        result = self._client().get_public_key(KeyId=kms_key_id)
+        der_public_key = result.get("PublicKey")
+        if not isinstance(der_public_key, bytes):
+            raise RuntimeError("KMS did not return a public key")
 
-        return {"keys": [self._public_jwk.copy()]}
+        public_key = serialization.load_der_public_key(der_public_key)
+        if not isinstance(public_key, rsa.RSAPublicKey):
+            raise RuntimeError("KMS key must be an RSA public key")
+
+        public_numbers = public_key.public_numbers()
+        jwk = {
+            "kty": "RSA",
+            "use": "sig",
+            "alg": "RS256",
+            "kid": kid,
+            "n": _base64url(
+                public_numbers.n.to_bytes((public_numbers.n.bit_length() + 7) // 8, "big")
+            ),
+            "e": _base64url(
+                public_numbers.e.to_bytes((public_numbers.e.bit_length() + 7) // 8, "big")
+            ),
+        }
+        self._public_jwks[cache_key] = jwk
+        return jwk
 
     def _ensure_configured(self) -> None:
         if not self._kms_key_id or not self._jwt_kid or not self._region:

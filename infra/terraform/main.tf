@@ -1,5 +1,9 @@
 locals {
   deployed_function_name = "${var.function_name}-${var.environment}"
+  jwt_public_key_arns = distinct(concat(
+    [var.jwt_kms_key_arn],
+    [for key in var.jwt_additional_public_keys : key.kms_key_id],
+  ))
 }
 
 data "aws_iam_policy_document" "lambda_assume_role" {
@@ -27,9 +31,15 @@ data "aws_iam_policy_document" "lambda_runtime" {
   }
 
   statement {
-    sid       = "SignTokensAndPublishPublicKey"
-    actions   = ["kms:Sign", "kms:GetPublicKey"]
+    sid       = "SignTokens"
+    actions   = ["kms:Sign"]
     resources = [var.jwt_kms_key_arn]
+  }
+
+  statement {
+    sid       = "PublishPublicKeys"
+    actions   = ["kms:GetPublicKey"]
+    resources = local.jwt_public_key_arns
   }
 
   dynamic "statement" {
@@ -90,13 +100,14 @@ resource "aws_lambda_function" "function" {
 
   environment {
     variables = {
-      DATABASE_SECRET_ARN = var.database_secret_arn
-      JWT_AUDIENCE        = var.jwt_audience
-      JWT_ISSUER          = var.jwt_issuer
-      JWT_KID             = var.jwt_kid
-      JWT_KMS_KEY_ID      = var.jwt_kms_key_arn
-      JWT_TTL_SECONDS     = tostring(var.jwt_ttl_seconds)
-      LOG_LEVEL           = "WARNING"
+      DATABASE_SECRET_ARN             = var.database_secret_arn
+      JWT_AUDIENCE                    = var.jwt_audience
+      JWT_ADDITIONAL_PUBLIC_KEYS_JSON = jsonencode(var.jwt_additional_public_keys)
+      JWT_ISSUER                      = var.jwt_issuer
+      JWT_KID                         = var.jwt_kid
+      JWT_KMS_KEY_ID                  = var.jwt_kms_key_arn
+      JWT_TTL_SECONDS                 = tostring(var.jwt_ttl_seconds)
+      LOG_LEVEL                       = "WARNING"
     }
   }
 
@@ -113,4 +124,11 @@ resource "aws_lambda_function" "function" {
     aws_cloudwatch_log_group.function,
     aws_iam_role_policy.function,
   ]
+
+  lifecycle {
+    precondition {
+      condition     = !contains([for key in var.jwt_additional_public_keys : trimspace(key.kid)], trimspace(var.jwt_kid))
+      error_message = "jwt_kid must differ from every additional public key kid."
+    }
+  }
 }
