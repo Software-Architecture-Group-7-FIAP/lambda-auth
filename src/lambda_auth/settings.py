@@ -1,9 +1,16 @@
 """Configuração segura lida do ambiente de execução."""
 
+import json
 import os
 from dataclasses import dataclass, field
 
 _ALLOWED_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+
+
+@dataclass(frozen=True, slots=True)
+class AdditionalPublicKey:
+    kid: str
+    kms_key_id: str = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +23,10 @@ class Settings:
     jwt_ttl_seconds: int = 900
     jwt_kid: str = ""
     kms_key_id: str = field(default="", repr=False)
+    additional_public_keys: tuple[AdditionalPublicKey, ...] = field(
+        default=(),
+        repr=False,
+    )
     aws_region: str = ""
 
     @property
@@ -46,6 +57,12 @@ class Settings:
         if not 1 <= jwt_ttl_seconds <= 900:
             raise ValueError("JWT_TTL_SECONDS deve estar entre 1 e 900")
 
+        jwt_kid = os.environ.get("JWT_KID", "").strip()
+        additional_public_keys = _parse_additional_public_keys(
+            os.environ.get("JWT_ADDITIONAL_PUBLIC_KEYS_JSON", "[]"),
+            jwt_kid,
+        )
+
         return cls(
             log_level=log_level,
             database_url=os.environ.get("DATABASE_URL", "").strip(),
@@ -53,9 +70,45 @@ class Settings:
             jwt_issuer=os.environ.get("JWT_ISSUER", "").strip(),
             jwt_audience=os.environ.get("JWT_AUDIENCE", "").strip(),
             jwt_ttl_seconds=jwt_ttl_seconds,
-            jwt_kid=os.environ.get("JWT_KID", "").strip(),
+            jwt_kid=jwt_kid,
             kms_key_id=os.environ.get("JWT_KMS_KEY_ID", "").strip(),
+            additional_public_keys=additional_public_keys,
             aws_region=os.environ.get(
                 "AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "")
             ).strip(),
         )
+
+
+def _parse_additional_public_keys(
+    serialized_keys: str,
+    active_kid: str,
+) -> tuple[AdditionalPublicKey, ...]:
+    error_message = (
+        "JWT_ADDITIONAL_PUBLIC_KEYS_JSON must be a JSON list of unique kid and kms_key_id objects"
+    )
+    try:
+        raw_keys = json.loads(serialized_keys)
+    except (json.JSONDecodeError, TypeError):
+        raise ValueError(error_message) from None
+    if not isinstance(raw_keys, list):
+        raise ValueError(error_message)
+
+    keys: list[AdditionalPublicKey] = []
+    seen_kids = {active_kid} if active_kid else set()
+    for raw_key in raw_keys:
+        if not isinstance(raw_key, dict) or set(raw_key) != {"kid", "kms_key_id"}:
+            raise ValueError(error_message)
+        kid = raw_key["kid"]
+        kms_key_id = raw_key["kms_key_id"]
+        if not isinstance(kid, str) or not isinstance(kms_key_id, str):
+            raise ValueError(error_message)
+        normalized_kid = kid.strip()
+        normalized_kms_key_id = kms_key_id.strip()
+        if not normalized_kid or not normalized_kms_key_id:
+            raise ValueError(error_message)
+        if normalized_kid in seen_kids:
+            raise ValueError("JWT_ADDITIONAL_PUBLIC_KEYS_JSON must contain unique kid values")
+        seen_kids.add(normalized_kid)
+        keys.append(AdditionalPublicKey(normalized_kid, normalized_kms_key_id))
+
+    return tuple(sorted(keys, key=lambda key: key.kid))

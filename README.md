@@ -34,7 +34,9 @@ python -m pip install -e ".[dev]"
 
 ## Configuração local
 
-`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente. Em desenvolvimento local, use `DATABASE_URL` no ambiente. Na Lambda, informe `DATABASE_SECRET_ARN`; o handler busca a URL no Secrets Manager e mantém um cache em memória por cinco minutos. A Function precisa de `JWT_KMS_KEY_ID`, `JWT_KID`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS` e `AWS_REGION` para emitir tokens. O emissor e a audiência do exemplo são placeholders e devem ser alinhados com o grupo. A assinatura via KMS segue a proposta do ADR e ainda precisa ser conciliada com a nota técnica da issue #64 sobre secret externo.
+`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente. Em desenvolvimento local, use `DATABASE_URL` no ambiente. Na Lambda, informe `DATABASE_SECRET_ARN`; o handler busca a URL no Secrets Manager e mantém um cache em memória por cinco minutos. A Function precisa de `JWT_KMS_KEY_ID`, `JWT_KID`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS` e `AWS_REGION` para emitir tokens RS256 com KMS. O emissor e a audiência do exemplo são placeholders e devem coincidir com a configuração do consumidor.
+
+`JWT_ADDITIONAL_PUBLIC_KEYS_JSON` aceita uma lista JSON de objetos `{ "kid": "...", "kms_key_id": "..." }`. Essas chaves aparecem no JWKS para permitir rotação, mas nunca são usadas para assinar. O padrão `[]` mantém compatibilidade com a configuração de chave única. Identificadores vazios, campos extras e `kid` repetido — inclusive o `kid` ativo — fazem a inicialização falhar sem reproduzir o valor recebido.
 
 ```powershell
 $env:LOG_LEVEL = "INFO"
@@ -43,6 +45,16 @@ $env:LOG_LEVEL = "INFO"
 `LOG_LEVEL` aceita `DEBUG`, `INFO`, `WARNING`, `ERROR` ou `CRITICAL`; o padrão é `WARNING`.
 
 O TTL aceita valores entre 1 e 900 segundos e usa 900 por padrão. O endpoint de autenticação retorna `503` quando a configuração necessária está ausente.
+
+## Rotação das chaves JWT
+
+1. Configure a chave B em `JWT_ADDITIONAL_PUBLIC_KEYS_JSON`, mantendo A em `JWT_KID` e `JWT_KMS_KEY_ID`.
+2. Implante e confirme que A e B aparecem em `GET /.well-known/jwks.json`; aguarde a propagação e os caches dos consumidores.
+3. Torne B ativa e mantenha A como chave adicional. Somente B recebe permissão `kms:Sign`.
+4. Registre o último instante possível de emissão por A. Remova A somente depois de TTL máximo, tolerância de relógio, cache JWKS e propagação acordados.
+5. Durante a sobreposição, um rollback para A exige republicar A antes de voltar a assinar com ela.
+
+O endpoint falha por inteiro com `503` se qualquer chave configurada não puder ser publicada. Isso evita entregar um JWKS parcial que invalidaria tokens ainda aceitos durante a transição.
 
 ## Preparação de infraestrutura
 

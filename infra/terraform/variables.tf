@@ -99,6 +99,25 @@ variable "jwt_kid" {
   }
 }
 
+variable "jwt_additional_public_keys" {
+  description = "Additional KMS public keys published during JWT key rotation; never used to sign."
+  type = list(object({
+    kid        = string
+    kms_key_id = string
+  }))
+  default  = []
+  nullable = false
+
+  validation {
+    condition = (
+      length(distinct([for key in var.jwt_additional_public_keys : trimspace(key.kid)])) == length(var.jwt_additional_public_keys) &&
+      alltrue([for key in var.jwt_additional_public_keys : length(trimspace(key.kid)) > 0]) &&
+      alltrue([for key in var.jwt_additional_public_keys : can(regex("^arn:[^:]+:kms:[^:]+:[0-9]{12}:key/.+$", key.kms_key_id))])
+    )
+    error_message = "jwt_additional_public_keys must contain unique non-empty kids and KMS key ARNs."
+  }
+}
+
 variable "jwt_issuer" {
   description = "Issuer claim agreed with the platform and token consumers."
   type        = string
