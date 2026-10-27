@@ -15,6 +15,9 @@ _token_signer = KmsTokenSigner(
     _settings.kms_key_id,
     _settings.jwt_kid,
     _settings.aws_region,
+    additional_public_keys=tuple(
+        (key.kid, key.kms_key_id) for key in _settings.additional_public_keys
+    ),
 )
 _database_url_provider = (
     SecretsManagerDatabaseUrl(_settings.database_secret_arn, _settings.aws_region)

@@ -30,8 +30,13 @@ class FakeCustomerRepository:
 
 
 class FakeTokenSigner:
-    def __init__(self, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        error: Exception | None = None,
+        jwks_error: Exception | None = None,
+    ) -> None:
         self.error = error
+        self.jwks_error = jwks_error
         self.claims: Mapping[str, object] | None = None
         self.issue_calls = 0
 
@@ -43,6 +48,8 @@ class FakeTokenSigner:
         return "test-token"
 
     def get_jwks(self) -> Mapping[str, object]:
+        if self.jwks_error is not None:
+            raise self.jwks_error
         return {"keys": [{"kty": "RSA", "kid": "test-key"}]}
 
 
@@ -220,6 +227,18 @@ def test_jwks_endpoint_returns_public_keys_with_cache_headers() -> None:
     assert result["statusCode"] == 200
     assert result["headers"]["cache-control"] == "public, max-age=300"
     assert json.loads(result["body"]) == {"keys": [{"kty": "RSA", "kid": "test-key"}]}
+
+
+def test_jwks_dependency_failure_returns_generic_service_unavailable() -> None:
+    internal_message = "kms public key unavailable"
+    result = _adapter(
+        FakeCustomerRepository(),
+        FakeTokenSigner(jwks_error=RuntimeError(internal_message)),
+    ).handle({"httpMethod": "GET", "path": "/.well-known/jwks.json"})
+
+    assert result["statusCode"] == 503
+    assert json.loads(result["body"]) == {"error": "service_unavailable"}
+    assert internal_message not in json.dumps(result)
 
 
 def test_http_application_rejects_wrong_auth_method() -> None:
