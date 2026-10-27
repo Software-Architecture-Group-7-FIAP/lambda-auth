@@ -37,11 +37,7 @@ def _request_from_event(event: object) -> HttpRequest | None:
         method = event.get("httpMethod")
         path = event.get("path")
         if isinstance(path, str):
-            stage = (
-                request_context.get("stage")
-                if isinstance(request_context, Mapping)
-                else None
-            )
+            stage = request_context.get("stage") if isinstance(request_context, Mapping) else None
             if isinstance(stage, str) and stage and stage != "$default":
                 stage_prefix = f"/{stage}/"
                 if path.startswith(stage_prefix):

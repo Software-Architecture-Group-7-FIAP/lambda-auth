@@ -1,10 +1,10 @@
 locals {
-  deployed_function_name             = "${var.function_name}-${var.environment}"
+  deployed_function_name = "${var.function_name}-${var.environment}"
   cors_allowed_origin_by_environment = {
     hml = "https://app-hml.oficina-workshop.com.br"
     prd = "https://app.oficina-workshop.com.br"
   }
-  jwt_public_key_arns                = distinct(concat(
+  jwt_public_key_arns = distinct(concat(
     [var.jwt_kms_key_arn],
     [for key in var.jwt_additional_public_keys : key.kms_key_id],
   ))
