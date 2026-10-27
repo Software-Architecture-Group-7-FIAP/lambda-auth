@@ -21,20 +21,20 @@ variable "expected_account_id" {
 }
 
 variable "environment" {
-  description = "Deployment environment name used in resource names and tags."
+  description = "Deployment stage used in Lambda names and the shared SSM contract."
   type        = string
   nullable    = false
 
   validation {
-    condition     = contains(["dev", "homolog", "prod"], var.environment)
-    error_message = "environment must be dev, homolog, or prod."
+    condition     = contains(["hml", "prd"], var.environment)
+    error_message = "environment must be hml or prd."
   }
 }
 
 variable "function_name" {
   description = "Base name for the Lambda function. The environment is appended."
   type        = string
-  default     = "customer-cpf-auth"
+  default     = "lambda-auth"
   nullable    = false
 
   validation {

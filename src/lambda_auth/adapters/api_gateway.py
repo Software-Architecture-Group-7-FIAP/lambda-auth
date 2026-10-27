@@ -36,6 +36,16 @@ def _request_from_event(event: object) -> HttpRequest | None:
     else:
         method = event.get("httpMethod")
         path = event.get("path")
+        if isinstance(path, str):
+            stage = (
+                request_context.get("stage")
+                if isinstance(request_context, Mapping)
+                else None
+            )
+            if isinstance(stage, str) and stage and stage != "$default":
+                stage_prefix = f"/{stage}/"
+                if path.startswith(stage_prefix):
+                    path = path[len(stage) + 1 :]
 
     if not isinstance(method, str) or not method.strip():
         return None
@@ -45,7 +55,22 @@ def _request_from_event(event: object) -> HttpRequest | None:
     body = _body_from_event(event)
     if body is None:
         return None
-    return HttpRequest(method.strip().upper(), path, body)
+    return HttpRequest(method.strip().upper(), path, body, _origin_from_event(event))
+
+
+def _origin_from_event(event: Mapping[str, object]) -> str | None:
+    headers = event.get("headers")
+    if not isinstance(headers, Mapping):
+        return None
+
+    origin_values = [
+        value
+        for name, value in headers.items()
+        if isinstance(name, str) and name.lower() == "origin"
+    ]
+    if len(origin_values) != 1 or not isinstance(origin_values[0], str):
+        return None
+    return origin_values[0]
 
 
 def _body_from_event(event: Mapping[str, object]) -> Mapping[str, object] | None:
@@ -74,6 +99,10 @@ def _to_api_gateway_response(response: HttpResponse) -> dict[str, object]:
     return {
         "statusCode": response.status_code,
         "headers": dict(response.headers),
-        "body": json.dumps(dict(response.body), separators=(",", ":")),
+        "body": (
+            ""
+            if response.status_code == 204
+            else json.dumps(dict(response.body), separators=(",", ":"))
+        ),
         "isBase64Encoded": False,
     }
