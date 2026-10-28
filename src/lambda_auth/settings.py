@@ -28,6 +28,7 @@ class Settings:
         repr=False,
     )
     aws_region: str = ""
+    cors_allowed_origin: str = ""
 
     @property
     def auth_configured(self) -> bool:
@@ -76,6 +77,7 @@ class Settings:
             aws_region=os.environ.get(
                 "AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "")
             ).strip(),
+            cors_allowed_origin=os.environ.get("CORS_ALLOWED_ORIGIN", "").strip(),
         )
 
 

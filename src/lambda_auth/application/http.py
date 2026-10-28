@@ -19,6 +19,7 @@ class HttpRequest:
     method: str
     path: str
     body: Mapping[str, object] = field(default_factory=lambda: EMPTY_BODY)
+    origin: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

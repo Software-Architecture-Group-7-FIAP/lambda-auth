@@ -31,6 +31,7 @@ _customer_repository = PostgresCustomerRepository(
 _application = HttpApplication(
     AuthenticateCustomer(_customer_repository, _token_signer, _settings),
     _token_signer,
+    cors_allowed_origin=_settings.cors_allowed_origin,
 )
 _adapter = ApiGatewayAdapter(_application)
 
