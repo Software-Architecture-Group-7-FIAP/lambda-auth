@@ -2,6 +2,14 @@
 
 Serviço de autenticação de clientes por CPF, preparado para AWS Lambda. O endpoint `POST /auth/customer/token` valida o CPF, verifica se o cliente está ativo e emite um JWT.
 
+## Contratos da API integrada
+
+- OpenAPI da aplicação FastAPI: [auto-shop-system/docs/api/openapi.json](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/api/openapi.json)
+- Coleção Postman da aplicação, API Gateway e Lambda: [auto-shop-system/docs/api/auto-shop.postman_collection.json](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/api/auto-shop.postman_collection.json)
+- Ambientes Postman sem credenciais: [HML](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/api/auto-shop-hml.postman_environment.json) · [PRD](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/api/auto-shop-prd.postman_environment.json)
+
+O OpenAPI é gerado a partir da aplicação FastAPI. As rotas desta Lambda e do API Gateway estão descritas na coleção Postman. Preencha URLs e dados sintéticos somente no ambiente local do Postman; não versione CPF, senha ou token.
+
 ## Arquitetura
 
 - `src/lambda_auth/handler.py` é o entrypoint da Lambda e compõe os componentes.
