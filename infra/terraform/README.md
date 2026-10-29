@@ -7,6 +7,7 @@ Este módulo descreve a preparação de uma função Lambda Python 3.12 e suas p
 | Item | Situação e dependências | Proprietário operacional |
 |---|---|---|
 | Função Lambda `aws_lambda_function.function` | Gerenciada por este módulo; depende do pacote Linux x86_64, role e policy, log group, valores aprovados de configuração e acessibilidade de rede ao PostgreSQL, Secrets Manager e KMS. | Equipe da aplicação após aprovação de plataforma. |
+| Parâmetro SSM `aws_ssm_parameter.customer_token_function_arn` | Gerenciado por este módulo como `String`; publica o ARN da função em `/auto-shop/staging/auth/customer-token/function-arn/{hml|prd}` conforme o stage selecionado. | Equipe da aplicação; consumidores e equipe de plataforma confirmam o contrato antes da ativação. |
 | Role `aws_iam_role.function` e policy `aws_iam_role_policy.function` | Gerenciadas por este módulo. A policy permite gravar logs no grupo declarado, ler apenas o ARN de segredo configurado, chamar `kms:Sign` apenas na chave ativa e `kms:GetPublicKey` nas chaves publicadas. As permissões EC2 de interface de rede são incluídas quando há sub-redes privadas e usam `*`, conforme exigido pelas operações de rede da Lambda. | Equipe da aplicação; revisão e aprovação da equipe de segurança/plataforma. |
 | Grupo de logs `aws_cloudwatch_log_group.function` | Gerenciado por este módulo com retenção configurável. A Lambda precisa dele para iniciar e gravar logs. | Equipe da aplicação; retenção aprovada pela observabilidade/compliance. |
 | Interfaces de rede da Lambda | Criadas e removidas pelo serviço Lambda quando `private_subnet_ids` e `security_group_ids` são configurados; exigem permissões EC2 na role. Não são recursos Terraform deste módulo. | Equipe de plataforma/rede proprietária da VPC e sub-redes. |
@@ -19,6 +20,17 @@ Este módulo descreve a preparação de uma função Lambda Python 3.12 e suas p
 | Pacote de implantação | Artefato local/CI em `lambda_package_path`; deve conter `lambda_auth/handler.py` e dependências compatíveis com Linux x86_64. | Equipe da aplicação. |
 
 Os documentos `terraform.tfvars.example` e README são preparação; seus valores não constituem aprovação nem contrato operacional. Não há backend remoto configurado.
+
+## Contrato SSM por stage
+
+`environment` aceita somente `hml` ou `prd` para deployments Terraform. Com o nome base padrão `lambda-auth`, as funções resultantes são `lambda-auth-hml` e `lambda-auth-prd`. O módulo publica cada ARN como parâmetro `String` não secreto:
+
+| Stage | Nome padrão da função | Parâmetro SSM | Origem CORS permitida |
+|---|---|---|---|
+| `hml` | `lambda-auth-hml` | `/auto-shop/staging/auth/customer-token/function-arn/hml` | `https://app-hml.oficina-workshop.com.br` |
+| `prd` | `lambda-auth-prd` | `/auto-shop/staging/auth/customer-token/function-arn/prd` | `https://app.oficina-workshop.com.br` |
+
+Cada stage deve usar seu próprio state Terraform para que os recursos e parâmetros coexistam. O módulo não configura backend remoto; a equipe de plataforma precisa aprovar e configurar o state antes de qualquer provisionamento. Esta validação de `environment` não afeta o uso local do handler, que recebe suas configurações por variáveis de ambiente e pode usar `DATABASE_URL` em desenvolvimento.
 
 ## Configuração de rotação
 

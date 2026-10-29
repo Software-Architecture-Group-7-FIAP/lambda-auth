@@ -34,7 +34,7 @@ python -m pip install -e ".[dev]"
 
 ## Configuração local
 
-`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente. Em desenvolvimento local, use `DATABASE_URL` no ambiente. Na Lambda, informe `DATABASE_SECRET_ARN`; o handler busca a URL no Secrets Manager e mantém um cache em memória por cinco minutos. A Function precisa de `JWT_KMS_KEY_ID`, `JWT_KID`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS` e `AWS_REGION` para emitir tokens RS256 com KMS. O emissor e a audiência do exemplo são placeholders e devem coincidir com a configuração do consumidor.
+`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente. Em desenvolvimento local, use `DATABASE_URL` no ambiente. Na Lambda, informe `DATABASE_SECRET_ARN`; o handler busca a URL no Secrets Manager e mantém um cache em memória por cinco minutos. A Function precisa de `JWT_KMS_KEY_ID`, `JWT_KID`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS` e `AWS_REGION` para emitir tokens RS256 com KMS. `CORS_ALLOWED_ORIGIN` define a origem exata permitida para o endpoint de token: `https://app-hml.oficina-workshop.com.br` em `hml` e `https://app.oficina-workshop.com.br` em `prd`. O preflight `OPTIONS` retorna `204`; cabeçalhos de permissão são incluídos somente quando `Origin` coincide exatamente com a origem configurada, e respostas do endpoint variam por `Origin`. O emissor e a audiência do exemplo são placeholders e devem coincidir com a configuração do consumidor.
 
 `JWT_ADDITIONAL_PUBLIC_KEYS_JSON` aceita uma lista JSON de objetos `{ "kid": "...", "kms_key_id": "..." }`. Essas chaves aparecem no JWKS para permitir rotação, mas nunca são usadas para assinar. O padrão `[]` mantém compatibilidade com a configuração de chave única. Identificadores vazios, campos extras e `kid` repetido — inclusive o `kid` ativo — fazem a inicialização falhar sem reproduzir o valor recebido.
 
@@ -58,7 +58,9 @@ O endpoint falha por inteiro com `503` se qualquer chave configurada não puder 
 
 ## Preparação de infraestrutura
 
-O módulo Terraform em [`infra/terraform`](infra/terraform/README.md) configura a Lambda, a role com permissões mínimas e a retenção de logs. Conta, região, segredo, chave KMS, rede e contrato JWT são entradas que precisam ser confirmadas com a equipe responsável antes de provisionar. O CI valida e empacota o serviço sem credenciais AWS; nenhuma função ou recurso AWS é criado por ele.
+O módulo Terraform em [`infra/terraform`](infra/terraform/README.md) configura a Lambda, a role com permissões mínimas, a retenção de logs e o parâmetro SSM com o ARN da função. Para os stages `hml` e `prd`, os nomes padrão das funções são `lambda-auth-hml` e `lambda-auth-prd`; os ARNs são publicados, respectivamente, em `/auto-shop/staging/auth/customer-token/function-arn/hml` e `/auto-shop/staging/auth/customer-token/function-arn/prd`. Use um state Terraform separado para cada stage. Conta, região, segredo, chave KMS, rede e contrato JWT são entradas que precisam ser confirmadas com a equipe responsável antes de provisionar. O CI valida e empacota o serviço sem credenciais AWS; nenhuma função ou recurso AWS é criado por ele.
+
+A restrição Terraform a `hml`/`prd` se aplica apenas aos deployments AWS. O handler local continua usando configuração de processo, por exemplo `DATABASE_URL` em desenvolvimento, sem exigir um stage Terraform.
 
 ## Exercitar o handler localmente
 
