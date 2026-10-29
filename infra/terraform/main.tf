@@ -3,11 +3,15 @@ locals {
   cors_allowed_origin_by_environment = {
     hml = "https://app-hml.oficina-workshop.com.br"
     prd = "https://app.oficina-workshop.com.br"
+    dev = ""
   }
   jwt_public_key_arns = distinct(concat(
     [var.jwt_kms_key_arn],
     [for key in var.jwt_additional_public_keys : key.kms_key_id],
   ))
+  database_secret_resource_arn = startswith(var.database_secret_id, "arn:") ? (
+    replace(var.database_secret_id, "/-[A-Za-z0-9]{6}$/", "-*")
+  ) : "arn:aws:secretsmanager:${var.aws_region}:${var.expected_account_id}:secret:${var.database_secret_id}-*"
 }
 
 data "aws_iam_policy_document" "lambda_assume_role" {
@@ -31,7 +35,7 @@ data "aws_iam_policy_document" "lambda_runtime" {
   statement {
     sid       = "ReadDatabaseSecret"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.database_secret_arn]
+    resources = [local.database_secret_resource_arn]
   }
 
   statement {
@@ -104,7 +108,7 @@ resource "aws_lambda_function" "function" {
 
   environment {
     variables = {
-      DATABASE_SECRET_ARN             = var.database_secret_arn
+      DATABASE_SECRET_ID              = var.database_secret_id
       CORS_ALLOWED_ORIGIN             = local.cors_allowed_origin_by_environment[var.environment]
       JWT_AUDIENCE                    = var.jwt_audience
       JWT_ADDITIONAL_PUBLIC_KEYS_JSON = jsonencode(var.jwt_additional_public_keys)
@@ -138,9 +142,21 @@ resource "aws_lambda_function" "function" {
   }
 }
 
-resource "aws_ssm_parameter" "customer_token_function_arn" {
-  name        = "/auto-shop/staging/auth/customer-token/function-arn/${var.environment}"
-  description = "ARN da Lambda de token cliente no stage ${var.environment}."
+resource "aws_ssm_parameter" "function_arn" {
+  count = var.function_arn_ssm_parameter_name == "" ? 0 : 1
+
+  name        = var.function_arn_ssm_parameter_name
+  description = "ARN da Lambda de autenticação de clientes."
   type        = "String"
   value       = aws_lambda_function.function.arn
+
+  lifecycle {
+    precondition {
+      condition = (
+        (var.environment == "hml" && var.function_arn_ssm_parameter_name == "/auto-shop/staging/auth/customer-token/function-arn/hml") ||
+        (var.environment == "prd" && var.function_arn_ssm_parameter_name == "/auto-shop/staging/auth/customer-token/function-arn/prd")
+      )
+      error_message = "When publishing the Lambda ARN, hml must use the hml path and prd must use the prd path; dev cannot use either application path."
+    }
+  }
 }

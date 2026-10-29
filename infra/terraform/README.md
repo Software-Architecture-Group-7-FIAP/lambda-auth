@@ -1,5 +1,7 @@
 # Terraform: lambda-auth
 
+Requer Terraform CLI 1.9 ou superior. As validações de entrada comparam variáveis de ambiente e configuração, recurso suportado a partir dessa versão.
+
 Este módulo descreve a preparação de uma função Lambda Python 3.12 e suas permissões mínimas de execução. A infraestrutura ainda não foi ativada. Conta, região, rede privada, banco, segredo, chave KMS e API Gateway dependem de definição e aprovação explícitas de seus proprietários.
 
 ## Inventário de recursos, dependências e propriedade
@@ -7,15 +9,15 @@ Este módulo descreve a preparação de uma função Lambda Python 3.12 e suas p
 | Item | Situação e dependências | Proprietário operacional |
 |---|---|---|
 | Função Lambda `aws_lambda_function.function` | Gerenciada por este módulo; depende do pacote Linux x86_64, role e policy, log group, valores aprovados de configuração e acessibilidade de rede ao PostgreSQL, Secrets Manager e KMS. | Equipe da aplicação após aprovação de plataforma. |
-| Parâmetro SSM `aws_ssm_parameter.customer_token_function_arn` | Gerenciado por este módulo como `String`; publica o ARN da função em `/auto-shop/staging/auth/customer-token/function-arn/{hml|prd}` conforme o stage selecionado. | Equipe da aplicação; consumidores e equipe de plataforma confirmam o contrato antes da ativação. |
-| Role `aws_iam_role.function` e policy `aws_iam_role_policy.function` | Gerenciadas por este módulo. A policy permite gravar logs no grupo declarado, ler apenas o ARN de segredo configurado, chamar `kms:Sign` apenas na chave ativa e `kms:GetPublicKey` nas chaves publicadas. As permissões EC2 de interface de rede são incluídas quando há sub-redes privadas e usam `*`, conforme exigido pelas operações de rede da Lambda. | Equipe da aplicação; revisão e aprovação da equipe de segurança/plataforma. |
+| Parâmetro SSM `aws_ssm_parameter.function_arn` | Opcional; criado apenas quando se informa um caminho aprovado. Guarda o ARN como `String` não secreta e aceita somente os caminhos de HML e PRD descritos abaixo. | Equipe da aplicação e identidade autorizada a executar Terraform. |
+| Role `aws_iam_role.function` e policy `aws_iam_role_policy.function` | Gerenciadas por este módulo. A policy permite gravar logs no grupo declarado, ler apenas o nome lógico de segredo configurado (incluindo seu sufixo gerado no ARN), chamar `kms:Sign` somente na chave ativa e `kms:GetPublicKey` nas chaves publicadas. As permissões EC2 de interface de rede são incluídas quando há sub-redes privadas e usam `*`, conforme exigido pelas operações de rede da Lambda. | Equipe da aplicação; revisão e aprovação da equipe de segurança/plataforma. |
 | Grupo de logs `aws_cloudwatch_log_group.function` | Gerenciado por este módulo com retenção configurável. A Lambda precisa dele para iniciar e gravar logs. | Equipe da aplicação; retenção aprovada pela observabilidade/compliance. |
 | Interfaces de rede da Lambda | Criadas e removidas pelo serviço Lambda quando `private_subnet_ids` e `security_group_ids` são configurados; exigem permissões EC2 na role. Não são recursos Terraform deste módulo. | Equipe de plataforma/rede proprietária da VPC e sub-redes. |
 | Conta AWS, região e estado Terraform | Ainda não definidos. O backend remoto e o armazenamento/controle de acesso do estado são externos ao módulo; `terraform init -backend=false` não acessa nem configura um backend remoto. | Equipe de plataforma/cloud responsável pela conta e pelo estado. |
-| VPC, sub-redes privadas, security groups e caminho de saída | Existentes e fornecidos por plataforma. Precisam alcançar PostgreSQL, Secrets Manager e KMS por NAT ou VPC endpoints; custos de ambos não estão validados. O security group do banco precisa aceitar a origem da Lambda na porta PostgreSQL. | Equipe de plataforma/rede e proprietária do banco, conforme cada recurso. |
+| VPC, sub-redes privadas, security groups e caminho de saída | Obrigatórios em HML/PRD e fornecidos por plataforma; apenas dev pode omitir a VPC. Os IDs devem corresponder ao contrato SSM `/auto-shop/staging/network/vpc-id`, `/network/workload-private-subnet-ids` e `/network/lambda-security-group-id`; o preflight do coordenador compara a configuração implantada com esses valores antes de abrir recursos de sessão. Precisam alcançar PostgreSQL, Secrets Manager e KMS por NAT ou VPC endpoints; custos de ambos não estão validados. O security group do banco precisa aceitar a origem da Lambda na porta PostgreSQL. | Equipe de plataforma/rede e proprietária do banco, conforme cada recurso. |
 | PostgreSQL e credencial | Dependência externa. A credencial deve ter somente o acesso de leitura necessário ao identificador de cliente/documento. O módulo não cria nem migra banco ou usuário. | Equipe proprietária do banco/dados. |
-| Segredo do Secrets Manager | Dependência externa indicada por ARN; conteúdo esperado: `{"DATABASE_URL":"postgresql://..."}`. Se usar uma chave KMS gerenciada pelo cliente para criptografia, sua policy precisa conceder `kms:Decrypt` à role da Lambda. A aplicação mantém cache de 300 segundos por ambiente de execução, então leituras reais esperadas são menores que o limite conservador usado na estimativa abaixo. | Equipe proprietária de segurança/segredos; banco aprova a rotação e o ciclo de vida da credencial. |
-| Chaves KMS assimétricas RSA | Dependências externas indicadas por ARN. A chave ativa permite assinatura RSASSA-PKCS1-v1_5 SHA-256 e publicação; as adicionais permitem somente `kms:GetPublicKey`. O módulo não cria nem altera chaves ou suas policies. | Equipe proprietária de criptografia/segurança. |
+| Segredo do Secrets Manager | Dependência externa identificada pelo nome estável `auto-shop/staging/hml/lambda-auth` ou `auto-shop/staging/prd/lambda-auth`; conteúdo esperado: `{"DATABASE_URL":"postgresql://..."}`. A Lambda resolve o nome no Secrets Manager em cada atualização de cache, sem depender do sufixo mutável do ARN. Se usar uma chave KMS gerenciada pelo cliente para criptografia, sua policy precisa conceder `kms:Decrypt` à role da Lambda. A aplicação mantém cache de 300 segundos por ambiente de execução, então leituras reais esperadas são menores que o limite conservador usado na estimativa abaixo. | Equipe proprietária de segurança/segredos; banco aprova a rotação e o ciclo de vida da credencial. |
+| Chaves KMS assimétricas RSA | Dependências externas indicadas por ARN. A chave ativa permite assinatura RSASSA-PKCS1-v1_5 SHA-256 e publicação; as adicionais permitem somente `kms:GetPublicKey`. A policy da chave deve autorizar a role da Lambda. O módulo não cria nem altera chaves ou suas policies. | Equipe proprietária de criptografia/segurança. |
 | API Gateway HTTP API, rota, integração e permissão de invocação | Dependência externa e não declarada no módulo. A equipe proprietária deve aprovar contrato/issuer, audience, `kid`, grupo, esquema JWKS, rota, integração com Lambda e permissão de invocação antes de criar esses recursos. | Equipe proprietária do API Gateway, com a equipe da aplicação. |
 | Pacote de implantação | Artefato local/CI em `lambda_package_path`; deve conter `lambda_auth/handler.py` e dependências compatíveis com Linux x86_64. | Equipe da aplicação. |
 
@@ -23,21 +25,22 @@ Os documentos `terraform.tfvars.example` e README são preparação; seus valore
 
 ## Contrato SSM por stage
 
-`environment` aceita somente `hml` ou `prd` para deployments Terraform. Com o nome base padrão `lambda-auth`, as funções resultantes são `lambda-auth-hml` e `lambda-auth-prd`. O módulo publica cada ARN como parâmetro `String` não secreto:
+`environment` aceita `hml`, `prd` ou `dev`. HML e PRD são os stages do contrato de aplicação. Com o nome base padrão `lambda-auth`, suas funções são `lambda-auth-hml` e `lambda-auth-prd`; `dev` é para configuração de desenvolvimento e pode omitir a VPC.
 
 | Stage | Nome padrão da função | Parâmetro SSM | Origem CORS permitida |
 |---|---|---|---|
 | `hml` | `lambda-auth-hml` | `/auto-shop/staging/auth/customer-token/function-arn/hml` | `https://app-hml.oficina-workshop.com.br` |
 | `prd` | `lambda-auth-prd` | `/auto-shop/staging/auth/customer-token/function-arn/prd` | `https://app.oficina-workshop.com.br` |
 
-Cada stage deve usar seu próprio state Terraform para que os recursos e parâmetros coexistam. O módulo não configura backend remoto; a equipe de plataforma precisa aprovar e configurar o state antes de qualquer provisionamento. Esta validação de `environment` não afeta o uso local do handler, que recebe suas configurações por variáveis de ambiente e pode usar `DATABASE_URL` em desenvolvimento.
+`function_arn_ssm_parameter_name` fica vazio por padrão, portanto o parâmetro não é criado sem uma decisão explícita. Quando habilitada, a publicação aceita somente os dois caminhos acima, ligados respectivamente a `hml` e `prd`; `dev` não pode publicar nesses contratos. O ARN não é segredo. A identidade que executa Terraform precisa das permissões SSM necessárias para criar, atualizar, etiquetar e remover o parâmetro; essas permissões não são adicionadas à role da Lambda. Se o parâmetro já existir, importe-o no state Terraform revisado antes de planejar alterações.
+
+Cada stage deve usar seu próprio state Terraform para que os recursos coexistam. O módulo não configura backend remoto; a equipe de plataforma precisa aprovar e configurar o state antes de qualquer provisionamento. A configuração local do handler pode usar `DATABASE_URL` diretamente.
 
 ## Configuração de rotação
 
 `jwt_kms_key_arn` e `jwt_kid` identificam a única chave que assina tokens. `jwt_additional_public_keys` recebe objetos com `kid` e `kms_key_id` para as chaves que também precisam aparecer no JWKS durante uma transição. O Terraform serializa essa lista em `JWT_ADDITIONAL_PUBLIC_KEYS_JSON` e separa as permissões IAM: `kms:Sign` permanece restrito à ativa e `kms:GetPublicKey` cobre todas as publicadas.
 
 Use a sequência operacional documentada no README principal: pré-publicar a chave nova, aguardar propagação/cache, trocar a ativa mantendo sobreposição e retirar a antiga somente depois da janela de validade. Nunca reutilize um `kid` para outro material de chave.
-
 ## Cenário numérico de custo mensal de referência
 
 **Referência ilustrativa em us-east-1 (US East, N. Virginia), sem free tier ou créditos.** Premissas: 100.000 chamadas de autenticação/mês; Lambda com 256 MiB e duração média de 250 ms; uma operação RSA `Sign` por chamada usando uma chave RSA_3072 nova e dedicada; um segredo do Secrets Manager e até 100.000 leituras (limite conservador; o cache de 300 segundos por ambiente de execução reduz as leituras reais); uma solicitação HTTP API por chamada; 1 KiB de logs ingeridos por chamada e retenção de 14 dias. Preços unitários públicos consultados nas páginas oficiais abaixo; a conta final é arredondada.
@@ -68,13 +71,13 @@ Não executar os itens abaixo nesta fase de preparação. Antes de qualquer ativ
 1. Aprovar conta, partição, região, ambiente, proprietário do estado Terraform, backend remoto, controles de acesso e política de retenção do estado.
 2. Aprovar contrato de autenticação: issuer, audience, `kid`, grupo, endpoint, rota HTTP, formato de resposta e esquema JWKS com todos os consumidores.
 3. Aprovar VPC, sub-redes, security groups e caminho de rede ao PostgreSQL, Secrets Manager e KMS; revisar e aprovar custo de NAT/VPC endpoints e regras de entrada/saída.
-4. Aprovar banco, endpoint e usuário de menor privilégio; aprovar conteúdo, rotação, criptografia e equipe dona do segredo. Aprovar também a policy de decrypt se houver chave KMS dedicada à criptografia do segredo.
+4. Aprovar banco, endpoint e usuário de menor privilégio; aprovar conteúdo, rotação, criptografia e equipe dona do segredo. Para HML/PRD, manter os nomes lógicos de segredo definidos no contrato de database-infra. Aprovar também a policy de decrypt se houver chave KMS dedicada à criptografia do segredo.
 5. Aprovar a chave KMS RSA dedicada, algoritmo compatível, política de chave concedendo somente as operações necessárias à role da Lambda, monitoramento, rotação aplicável e ciclo de vida.
-6. Aprovar pacote Linux x86_64, memória, timeout, variáveis e retenção de logs. Rever IAM, política de invocação e exposição da rota.
+6. Aprovar pacote Linux x86_64, memória, timeout, variáveis e retenção de logs. Rever IAM, política de invocação e exposição da rota. Se houver publicação do ARN em SSM, aprovar também o caminho e o escopo IAM da identidade Terraform.
 7. Produzir estimativa real na AWS Pricing Calculator com conta/região/tráfego/rede aprovados; obter aprovação de orçamento e definir alarmes e responsáveis por responder.
 8. Obter autorização explícita de mudança e janela operacional dos proprietários antes de qualquer credencial, chamada AWS, plano/aplicação, deploy ou teste de integração. Documentar plano de rollback e aprovar a sequência de remoção abaixo.
 
-Esta fase é estritamente preparação estática: **é proibido chamar APIs AWS, usar ou configurar credenciais AWS, executar `terraform apply`, fazer deploy ou provisionar recursos, rodar testes de integração ou fechar a issue.** A validação Terraform permitida inicializa providers com `-backend=false` e não cria plano. A CI falha se encontrar variáveis de ambiente ou arquivos padrão com material/configuração de credenciais AWS.
+Esta fase é estritamente preparação estática: **é proibido chamar APIs AWS, usar ou configurar credenciais AWS, executar `terraform apply`, fazer deploy ou provisionar recursos, rodar testes de integração ou fechar a issue.** A validação Terraform permitida inicializa providers com `-backend=false`; os testes de contrato podem executar `command = plan` com provider AWS mockado, sem consultar uma conta ou estado AWS. A CI falha se encontrar variáveis de ambiente ou arquivos padrão com material/configuração de credenciais AWS.
 
 ## Empacotar localmente
 
@@ -98,10 +101,10 @@ terraform init -backend=false -input=false -lockfile=readonly
 terraform validate -no-color
 ```
 
-O job Terraform da CI é preparação estática somente: permissões GitHub `contents: read`, checkout com `persist-credentials: false`, bloqueio de material/configuração de credenciais AWS, `terraform init -backend=false`, formatação e validação. Não usa APIs AWS, não gera plano e não executa apply, deploy ou provisionamento. O lockfile do provider está versionado para fixar a versão e os checksums; revise-o ao atualizar a restrição do provider.
+O job Terraform da CI é preparação estática somente: permissões GitHub `contents: read`, checkout com `persist-credentials: false`, bloqueio de material/configuração de credenciais AWS, `terraform init -backend=false`, formatação, validação e `terraform test`. Os testes executam planos de contrato com provider AWS mockado (`command = plan`), sem backend e sem chamadas às APIs AWS; portanto não geram plano contra uma conta ou estado AWS nem executam apply, deploy ou provisionamento. O lockfile do provider está versionado para fixar a versão e os checksums; revise-o ao atualizar a restrição do provider.
 
 ## Remoção e propriedade do teardown
 
-Nenhuma remoção foi executada. Em uma mudança futura aprovada, a equipe de plataforma/estado deve coordenar janela e revisar o estado e plano de destruição; a equipe da aplicação executa a remoção apenas dos recursos deste módulo (função Lambda, role, policy e grupo de logs) com o mesmo estado aprovado. A remoção do log group apaga os logs retidos, portanto requer aceite do proprietário de observabilidade/compliance.
+Nenhuma remoção foi executada. Em uma mudança futura aprovada, a equipe de plataforma/estado deve coordenar janela e revisar o estado e plano de destruição; a equipe da aplicação executa a remoção apenas dos recursos deste módulo (função Lambda, role, policy, grupo de logs e o parâmetro SSM opcional) com o mesmo estado aprovado. A remoção do log group apaga os logs retidos, portanto requer aceite do proprietário de observabilidade/compliance.
 
 Os proprietários externos removem ou alteram suas próprias dependências somente após aprovação: equipe de API Gateway para rota/integração/permissão; plataforma/rede para configuração de VPC e endpoints compartilhados; banco para usuário e credenciais; segurança para policy e chave KMS; e proprietário de segredos para segredo e rotação. Antes de excluir a chave, avaliar dependências de validação de tokens emitidos; antes de remover segredo/rede/banco, confirmar que nenhum consumidor depende deles. A role referenciada na policy da chave deve ser removida da policy pelo proprietário da chave. Não destruir recursos compartilhados como parte do estado deste módulo.
