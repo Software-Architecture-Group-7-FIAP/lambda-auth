@@ -20,8 +20,8 @@ _token_signer = KmsTokenSigner(
     ),
 )
 _database_url_provider = (
-    SecretsManagerDatabaseUrl(_settings.database_secret_arn, _settings.aws_region)
-    if _settings.database_secret_arn
+    SecretsManagerDatabaseUrl(_settings.database_secret_id, _settings.aws_region)
+    if _settings.database_secret_id
     else None
 )
 _customer_repository = PostgresCustomerRepository(

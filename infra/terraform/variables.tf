@@ -26,8 +26,8 @@ variable "environment" {
   nullable    = false
 
   validation {
-    condition     = contains(["hml", "prd"], var.environment)
-    error_message = "environment must be hml or prd."
+    condition     = contains(["hml", "prd", "dev"], var.environment)
+    error_message = "environment must be hml, prd, or dev."
   }
 }
 
@@ -54,14 +54,21 @@ variable "lambda_package_path" {
   }
 }
 
-variable "database_secret_arn" {
-  description = "ARN of the existing Secrets Manager secret containing DATABASE_URL."
+variable "database_secret_id" {
+  description = "Stable Secrets Manager name for the database URL secret, or a fixed ARN for dev."
   type        = string
   nullable    = false
 
   validation {
-    condition     = can(regex("^arn:[^:]+:secretsmanager:[^:]+:[0-9]{12}:secret:.+$", var.database_secret_arn))
-    error_message = "database_secret_arn must be a Secrets Manager secret ARN."
+    condition = (
+      (var.environment == "hml" && var.database_secret_id == "auto-shop/staging/hml/lambda-auth") ||
+      (var.environment == "prd" && var.database_secret_id == "auto-shop/staging/prd/lambda-auth") ||
+      (var.environment == "dev" && (
+        can(regex("^arn:[^:]+:secretsmanager:[^:]+:[0-9]{12}:secret:.+$", var.database_secret_id)) ||
+        can(regex("^[A-Za-z0-9/_+=.@-]{1,512}$", var.database_secret_id))
+      ))
+    )
+    error_message = "hml and prd must use their stable staging Secrets Manager names; dev must use a valid name or ARN."
   }
 }
 
@@ -153,24 +160,28 @@ variable "jwt_ttl_seconds" {
 }
 
 variable "private_subnet_ids" {
-  description = "Existing private subnet IDs for database access. Empty means no VPC attachment."
+  description = "Existing private subnet IDs for database access. HML and PRD require a VPC attachment; only dev may leave this empty."
   type        = list(string)
   default     = []
   nullable    = false
 }
 
 variable "security_group_ids" {
-  description = "Existing security groups for Lambda VPC access. Required with private_subnet_ids."
+  description = "Existing security groups for Lambda VPC access. HML and PRD require these with private_subnet_ids; only dev may leave both empty."
   type        = list(string)
   default     = []
   nullable    = false
 
   validation {
     condition = (
-      (length(var.private_subnet_ids) == 0 && length(var.security_group_ids) == 0) ||
+      (
+        var.environment == "dev" &&
+        length(var.private_subnet_ids) == 0 &&
+        length(var.security_group_ids) == 0
+      ) ||
       (length(var.private_subnet_ids) > 0 && length(var.security_group_ids) > 0)
     )
-    error_message = "Provide both private_subnet_ids and security_group_ids, or leave both empty."
+    error_message = "HML and PRD require private_subnet_ids and security_group_ids; only dev may leave both empty."
   }
 }
 
@@ -207,5 +218,21 @@ variable "log_retention_days" {
   validation {
     condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
     error_message = "log_retention_days must be a CloudWatch Logs retention value."
+  }
+}
+
+variable "function_arn_ssm_parameter_name" {
+  description = "Optional approved SSM Parameter Store path for publishing the Lambda ARN; empty disables publication."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition = contains([
+      "",
+      "/auto-shop/staging/auth/customer-token/function-arn/hml",
+      "/auto-shop/staging/auth/customer-token/function-arn/prd",
+    ], var.function_arn_ssm_parameter_name)
+    error_message = "function_arn_ssm_parameter_name must be empty or one of the application contract paths for hml or prd."
   }
 }

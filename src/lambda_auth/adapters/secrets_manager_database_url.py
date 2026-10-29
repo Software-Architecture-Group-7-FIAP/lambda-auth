@@ -17,13 +17,13 @@ _AWS_CLIENT_CONFIG = Config(
 class SecretsManagerDatabaseUrl:
     def __init__(
         self,
-        secret_arn: str,
+        secret_id: str,
         region: str,
         secrets_client: Any | None = None,
         clock: Callable[[], float] | None = None,
         cache_ttl_seconds: int = 300,
     ) -> None:
-        self._secret_arn = secret_arn
+        self._secret_id = secret_id
         self._region = region
         self._secrets_client = secrets_client
         self._clock = clock or monotonic
@@ -40,10 +40,10 @@ class SecretsManagerDatabaseUrl:
         ):
             return self._cached_database_url
 
-        if not self._secret_arn or not self._region:
+        if not self._secret_id or not self._region:
             raise RuntimeError("database secret configuration is incomplete")
 
-        secret_response = self._client().get_secret_value(SecretId=self._secret_arn)
+        secret_response = self._client().get_secret_value(SecretId=self._secret_id)
         secret_value = secret_response.get("SecretString")
         if not isinstance(secret_value, str):
             raise RuntimeError("database secret is unavailable")

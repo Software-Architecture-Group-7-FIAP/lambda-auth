@@ -104,13 +104,13 @@ def test_settings_reject_additional_key_with_active_kid(
         Settings.from_environment()
 
 
-def test_settings_accept_database_secret_arn_without_database_url(
+def test_settings_accept_database_secret_id_without_database_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv(
-        "DATABASE_SECRET_ARN",
-        "arn:aws:secretsmanager:local:000000000000:secret:test",
+        "DATABASE_SECRET_ID",
+        "auto-shop/staging/hml/lambda-auth",
     )
     monkeypatch.setenv("JWT_ISSUER", "https://auth.example.invalid")
     monkeypatch.setenv("JWT_AUDIENCE", "auto-shop-api")
