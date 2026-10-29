@@ -89,3 +89,10 @@ python -m pytest --cov=lambda_auth --cov-report=term-missing --cov-fail-under=80
 ```
 
 A mesma sequência roda na CI para pushes e pull requests. A CI só tem permissão de leitura do conteúdo do repositório e não acessa a AWS.
+## Referências de arquitetura
+
+As decisões que cruzam os quatro repositórios estão centralizadas na documentação do [auto-shop-system](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/diagramas-fase-3.md).
+
+- [RFC-0003: CPF, JWT RS256, KMS e JWKS](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/rfc/RFC-0003-autenticacao-cliente-cpf-jwt.md)
+- [ADR-0064: autenticação de cliente](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/decisions/ADR-0064-autenticacao-cliente-cpf-jwt.md)
+- [Justificativa do PostgreSQL e modelo ER](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/justificativa-banco-postgresql.md)
