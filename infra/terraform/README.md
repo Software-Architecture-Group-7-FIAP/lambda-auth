@@ -36,6 +36,17 @@ Os documentos `terraform.tfvars.example` e README são preparação; seus valore
 
 Cada stage deve usar seu próprio state Terraform para que os recursos coexistam. O módulo não configura backend remoto; a equipe de plataforma precisa aprovar e configurar o state antes de qualquer provisionamento. A configuração local do handler pode usar `DATABASE_URL` diretamente.
 
+## Contrato JWT consumido pelo auto-shop-system
+
+| Stage | `jwt_issuer` | `jwt_audience` | JWKS público |
+|---|---|---|---|
+| `hml` | `https://api.oficina-workshop.com.br` | `auto-shop-api` | `https://api.oficina-workshop.com.br/hml/.well-known/jwks.json` |
+| `prd` | `https://api.oficina-workshop.com.br` | `auto-shop-api` | `https://api.oficina-workshop.com.br/prd/.well-known/jwks.json` |
+
+O issuer é a raiz estável da API nos dois stages; o base path escolhe o JWKS e as chaves do stage. Configure `jwt_issuer` e `jwt_audience` com esses valores ao planejar cada função e mantenha `JWT_KID` alinhado ao `kid` ativo publicado pelo respectivo endpoint. O API Gateway remove o base path ao encaminhar a rota para a Lambda, que responde em `/.well-known/jwks.json`.
+
+O módulo publica somente o ARN da função no SSM, quando `function_arn_ssm_parameter_name` é definido para o stage. Issuer, audience e URL do JWKS são configuração pública nos overlays Kubernetes do `auto-shop-system`; não são parâmetros SSM neste contrato.
+
 ## Configuração de rotação
 
 `jwt_kms_key_arn` e `jwt_kid` identificam a única chave que assina tokens. `jwt_additional_public_keys` recebe objetos com `kid` e `kms_key_id` para as chaves que também precisam aparecer no JWKS durante uma transição. O Terraform serializa essa lista em `JWT_ADDITIONAL_PUBLIC_KEYS_JSON` e separa as permissões IAM: `kms:Sign` permanece restrito à ativa e `kms:GetPublicKey` cobre todas as publicadas.
