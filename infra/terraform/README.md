@@ -21,7 +21,15 @@ Este módulo descreve a preparação de uma função Lambda Python 3.12 e suas p
 | API Gateway HTTP API, rota, integração e permissão de invocação | Dependência externa e não declarada no módulo. A equipe proprietária deve aprovar contrato/issuer, audience, `kid`, grupo, esquema JWKS, rota, integração com Lambda e permissão de invocação antes de criar esses recursos. | Equipe proprietária do API Gateway, com a equipe da aplicação. |
 | Pacote de implantação | Artefato local/CI em `lambda_package_path`; deve conter `lambda_auth/handler.py` e dependências compatíveis com Linux x86_64. | Equipe da aplicação. |
 
-Os documentos `terraform.tfvars.example` e README são preparação; seus valores não constituem aprovação nem contrato operacional. Não há backend remoto configurado.
+Os documentos `terraform.tfvars.example` e README são preparação; seus valores não constituem aprovação nem contrato operacional. O root declara backend S3 configurável, mas ainda não há bucket nem configuração de backend por Environment provisionados.
+
+## Workflow de promoção HML/PRD
+
+O repositório inclui a workflow manual [`Promote lambda-auth`](../../.github/workflows/deploy-lambda.yml). Ela usa o backend S3 com state key exclusivo `lambda-auth/hml/terraform.tfstate` ou `lambda-auth/prd/terraform.tfstate`, native S3 lockfile, criptografia e validação do proprietário da conta. O bucket, versionamento, política de acesso, chave de criptografia e retenção precisam ser criados e aprovados pela equipe de plataforma; o módulo não cria nem altera esses recursos.
+
+A workflow só alcança OIDC depois de um preflight sem credenciais que valida branch `main`, stage, confirmação manual, readiness gate e configuração aprovada do Environment. Ela requer as variáveis de Environment `LAMBDA_DEPLOYMENT_READY`, `LAMBDA_DEPLOY_ROLE_ARN`, `LAMBDA_EXPECTED_AWS_ACCOUNT_ID`, `AWS_REGION`, `LAMBDA_TF_STATE_BUCKET`, `LAMBDA_TF_STATE_KEY`, `LAMBDA_DATABASE_SECRET_ID`, `LAMBDA_JWT_KMS_KEY_ARN`, `LAMBDA_JWT_KID`, `LAMBDA_JWT_ISSUER`, `LAMBDA_JWT_AUDIENCE`, `LAMBDA_PRIVATE_SUBNET_IDS`, `LAMBDA_SECURITY_GROUP_IDS` e `LAMBDA_SSM_PARAMETER_NAME`. Os valores opcionais são `LAMBDA_TF_STATE_KMS_KEY_ARN`, `LAMBDA_DATABASE_SECRET_KMS_KEY_ARN` e `LAMBDA_JWT_ADDITIONAL_PUBLIC_KEYS_JSON` (padrão `[]`). Os IDs de subnet, security group e chaves adicionais devem ser JSON válido.
+
+O plano é aplicado somente se `scripts/check_terraform_plan.py` confirmar que não há drift, exclusões, substituições ou recursos fora de CloudWatch Logs, IAM de execução da Lambda, Lambda e SSM. O plano permanece no runner efêmero e não é enviado como artefato. O role OIDC configurado precisa ter trust limitada ao repositório/Environment e permissões revisadas para esse módulo e para o backend; **não habilite `LAMBDA_DEPLOYMENT_READY` enquanto o role genérico tiver `PowerUserAccess`**. A ausência de qualquer variável mantém a promoção fechada, sem emitir token OIDC ou chamar AWS.
 
 ## Contrato SSM por stage
 
@@ -88,7 +96,7 @@ Não executar os itens abaixo nesta fase de preparação. Antes de qualquer ativ
 7. Produzir estimativa real na AWS Pricing Calculator com conta/região/tráfego/rede aprovados; obter aprovação de orçamento e definir alarmes e responsáveis por responder.
 8. Obter autorização explícita de mudança e janela operacional dos proprietários antes de qualquer credencial, chamada AWS, plano/aplicação, deploy ou teste de integração. Documentar plano de rollback e aprovar a sequência de remoção abaixo.
 
-Esta fase é estritamente preparação estática: **é proibido chamar APIs AWS, usar ou configurar credenciais AWS, executar `terraform apply`, fazer deploy ou provisionar recursos, rodar testes de integração ou fechar a issue.** A validação Terraform permitida inicializa providers com `-backend=false`; os testes de contrato podem executar `command = plan` com provider AWS mockado, sem consultar uma conta ou estado AWS. A CI falha se encontrar variáveis de ambiente ou arquivos padrão com material/configuração de credenciais AWS.
+Esta fase permanece preparação até que as aprovações listadas acima sejam registradas e o gate de Environment seja habilitado deliberadamente. A CI padrão inicializa providers com `-backend=false`; os testes de contrato podem executar `command = plan` com provider AWS mockado, sem consultar uma conta ou state AWS. A CI falha se encontrar variáveis de ambiente ou arquivos padrão com material/configuração de credenciais AWS. A workflow manual de promoção é o único caminho de deploy deste repositório e fica fechada enquanto qualquer entrada aprovada estiver ausente.
 
 ## Empacotar localmente
 
