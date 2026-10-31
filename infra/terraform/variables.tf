@@ -85,13 +85,19 @@ variable "database_secret_kms_key_arn" {
 }
 
 variable "jwt_kms_key_arn" {
-  description = "ARN of the existing asymmetric RSA KMS key used for RS256 signing."
+  description = "Optional ARN of an existing asymmetric RSA KMS key; when empty, HML or PRD uses the signing key managed by this module."
   type        = string
+  default     = ""
   nullable    = false
 
   validation {
-    condition     = can(regex("^arn:[^:]+:kms:[^:]+:[0-9]{12}:key/.+$", var.jwt_kms_key_arn))
-    error_message = "jwt_kms_key_arn must be a KMS key ARN."
+    condition     = var.jwt_kms_key_arn == "" || can(regex("^arn:[^:]+:kms:[^:]+:[0-9]{12}:key/.+$", var.jwt_kms_key_arn))
+    error_message = "jwt_kms_key_arn must be empty or a KMS key ARN."
+  }
+
+  validation {
+    condition     = var.jwt_kms_key_arn != "" || contains(["hml", "prd"], var.environment)
+    error_message = "jwt_kms_key_arn may be empty only for hml or prd, where this module manages the signing key; dev must provide an existing key."
   }
 }
 

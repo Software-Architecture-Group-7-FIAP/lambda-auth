@@ -8,7 +8,7 @@ def test_terraform_separates_signing_from_public_key_permissions() -> None:
 
     assert 'sid       = "SignTokens"' in main
     assert 'actions   = ["kms:Sign"]' in main
-    assert "resources = [var.jwt_kms_key_arn]" in main
+    assert "resources = [local.effective_jwt_kms_key_arn]" in main
     assert 'sid       = "PublishPublicKeys"' in main
     assert 'actions   = ["kms:GetPublicKey"]' in main
     assert "local.jwt_public_key_arns" in main

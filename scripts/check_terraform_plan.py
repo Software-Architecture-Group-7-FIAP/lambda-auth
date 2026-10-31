@@ -1,4 +1,4 @@
-"""Reject Terraform plans that can affect resources outside lambda-auth safely."""
+"""Reject Terraform plans outside the guarded lambda-auth resource contract."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ ALLOWED_RESOURCE_TYPES = {
     "aws_cloudwatch_log_group",
     "aws_iam_role",
     "aws_iam_role_policy",
+    "aws_kms_alias",
+    "aws_kms_key",
     "aws_lambda_function",
     "aws_ssm_parameter",
 }
