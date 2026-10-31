@@ -2,6 +2,8 @@
 
 Serviço de autenticação de clientes por CPF, preparado para AWS Lambda. O endpoint `POST /auth/customer/token` valida o CPF, verifica se o cliente está ativo e emite um JWT.
 
+Decisões relacionadas no repositório `auto-shop-system`: [RFC-0003](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/rfc/RFC-0003-autenticacao-cliente-cpf-jwt.md) (autenticação de cliente por CPF e JWT), [ADR-0064](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/decisions/ADR-0064-autenticacao-cliente-cpf-jwt.md) (contrato JWT RS256/KMS + JWKS), [ADR-0072](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/decisions/ADR-0072-matriz-jwt-audiencias.md) (matriz de audiências JWT web/gateway/customer) e [ADR-0071](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md) (topologia dos quatro repositórios).
+
 ## Contratos da API integrada
 
 - OpenAPI da aplicação FastAPI: [auto-shop-system/docs/api/openapi.json](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/api/openapi.json)
