@@ -56,6 +56,13 @@ def test_deployment_plan_is_guarded_and_never_uploaded_as_an_artifact() -> None:
     assert "LAMBDA_TF_STATE_KEY" in job
 
 
+def test_remote_state_owner_is_checked_without_unsupported_backend_argument() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "allowed-account-ids: ${{ vars.LAMBDA_EXPECTED_AWS_ACCOUNT_ID }}" in workflow
+    assert "expected_bucket_owner" not in workflow
+
+
 def test_signing_key_arn_is_an_optional_external_override() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
     preflight = re.search(r"(?ms)^  preflight:\n(?P<job>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)", workflow)
