@@ -59,9 +59,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
             raise PlanRejected(f"change data is missing for {address}")
 
         actions = change.get("actions")
-        if not isinstance(actions, list) or not all(
-            isinstance(action, str) for action in actions
-        ):
+        if not isinstance(actions, list) or not all(isinstance(action, str) for action in actions):
             raise PlanRejected(f"destructive or unsupported action for {address}: {actions}")
 
         action_tuple = tuple(actions)
