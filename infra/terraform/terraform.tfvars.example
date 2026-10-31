@@ -4,7 +4,9 @@ environment         = "hml"
 lambda_package_path = "../../dist/lambda-auth.zip"
 
 database_secret_id = "auto-shop/staging/hml/lambda-auth"
-jwt_kms_key_arn     = "arn:aws:kms:<region>:<account-id>:key/<key-id>"
+# Leave empty to let Terraform create the stage-specific RSA_2048 signing key.
+# Set an existing key ARN only when the platform has approved an external key.
+jwt_kms_key_arn     = ""
 jwt_kid             = "<approved-key-id>"
 jwt_additional_public_keys = []
 jwt_issuer          = "https://<approved-issuer>"

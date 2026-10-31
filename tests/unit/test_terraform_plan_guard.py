@@ -20,6 +20,8 @@ def test_accepts_only_lambda_module_resources_with_non_destructive_actions() -> 
             resource("aws_cloudwatch_log_group", "create"),
             resource("aws_iam_role", "update"),
             resource("aws_iam_role_policy", "no-op"),
+            resource("aws_kms_key", "create"),
+            resource("aws_kms_alias", "create"),
             resource("aws_lambda_function", "update"),
             resource("aws_ssm_parameter", "create"),
         )

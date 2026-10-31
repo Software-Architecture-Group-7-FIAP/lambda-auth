@@ -37,7 +37,6 @@ jobs:
           TF_STATE_BUCKET: ${{ vars.LAMBDA_TF_STATE_BUCKET }}
           TF_STATE_KEY: ${{ vars.LAMBDA_TF_STATE_KEY }}
           DATABASE_SECRET_ID: ${{ vars.LAMBDA_DATABASE_SECRET_ID }}
-          JWT_KMS_KEY_ARN: ${{ vars.LAMBDA_JWT_KMS_KEY_ARN }}
           JWT_KID: ${{ vars.LAMBDA_JWT_KID }}
           JWT_ISSUER: ${{ vars.LAMBDA_JWT_ISSUER }}
           JWT_AUDIENCE: ${{ vars.LAMBDA_JWT_AUDIENCE }}
@@ -55,7 +54,6 @@ jobs:
           test -n "$AWS_REGION"
           test -n "$TF_STATE_BUCKET"
           test -n "$TF_STATE_KEY"
-          test -n "$JWT_KMS_KEY_ARN"
           test -n "$JWT_KID"
           test -n "$PRIVATE_SUBNET_IDS"
           test -n "$SECURITY_GROUP_IDS"

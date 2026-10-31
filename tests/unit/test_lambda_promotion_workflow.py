@@ -56,6 +56,19 @@ def test_deployment_plan_is_guarded_and_never_uploaded_as_an_artifact() -> None:
     assert "LAMBDA_TF_STATE_KEY" in job
 
 
+def test_signing_key_arn_is_an_optional_external_override() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    preflight = re.search(
+        r"(?ms)^  preflight:\n(?P<job>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)", workflow
+    )
+    deploy = re.search(r"(?ms)^  deploy:\n(?P<job>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)", workflow)
+    assert preflight is not None
+    assert deploy is not None
+
+    assert 'test -n "$JWT_KMS_KEY_ARN"' not in preflight.group("job")
+    assert "TF_VAR_jwt_kms_key_arn: ${{ vars.LAMBDA_JWT_KMS_KEY_ARN }}" in deploy.group("job")
+
+
 def test_ci_remains_offline_and_backend_free() -> None:
     workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert re.search(r"(?m)^  terraform-static-validation:", workflow)
