@@ -18,6 +18,11 @@ ALLOWED_RESOURCE_TYPES = {
     "aws_ssm_parameter",
 }
 ALLOWED_ACTIONS = {("no-op",), ("create",), ("update",)}
+ALLOWED_DATA_SOURCE = (
+    "data.aws_iam_policy_document.lambda_runtime",
+    "aws_iam_policy_document",
+    ("read",),
+)
 
 
 class PlanRejected(ValueError):
@@ -47,19 +52,27 @@ def validate_plan(plan: dict[str, Any]) -> None:
 
         resource_type = resource_change.get("type")
         address = resource_change.get("address", "unknown address")
-        if not isinstance(resource_type, str) or resource_type not in ALLOWED_RESOURCE_TYPES:
-            raise PlanRejected(f"resource type is outside the Lambda module: {resource_type}")
+        mode = resource_change.get("mode", "managed")
 
         change = resource_change.get("change")
         if not isinstance(change, dict):
             raise PlanRejected(f"change data is missing for {address}")
 
         actions = change.get("actions")
-        if (
-            not isinstance(actions, list)
-            or not all(isinstance(action, str) for action in actions)
-            or tuple(actions) not in ALLOWED_ACTIONS
-        ):
+        if not isinstance(actions, list) or not all(isinstance(action, str) for action in actions):
+            raise PlanRejected(f"destructive or unsupported action for {address}: {actions}")
+
+        action_tuple = tuple(actions)
+        if mode == "data":
+            if (address, resource_type, action_tuple) != ALLOWED_DATA_SOURCE:
+                raise PlanRejected(f"data source is outside the Lambda module: {address}")
+            continue
+
+        if mode != "managed":
+            raise PlanRejected(f"unsupported resource mode for {address}: {mode}")
+        if not isinstance(resource_type, str) or resource_type not in ALLOWED_RESOURCE_TYPES:
+            raise PlanRejected(f"resource type is outside the Lambda module: {resource_type}")
+        if action_tuple not in ALLOWED_ACTIONS:
             raise PlanRejected(f"destructive or unsupported action for {address}: {actions}")
 
 
