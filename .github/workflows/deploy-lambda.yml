@@ -151,7 +151,6 @@ jobs:
             "-backend-config=bucket=${LAMBDA_TF_STATE_BUCKET}"
             "-backend-config=key=${LAMBDA_TF_STATE_KEY}"
             "-backend-config=region=${AWS_REGION}"
-            "-backend-config=expected_bucket_owner=${EXPECTED_ACCOUNT_ID}"
             "-backend-config=encrypt=true"
             "-backend-config=use_lockfile=true"
           )
