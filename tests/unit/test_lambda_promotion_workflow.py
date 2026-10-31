@@ -58,9 +58,7 @@ def test_deployment_plan_is_guarded_and_never_uploaded_as_an_artifact() -> None:
 
 def test_signing_key_arn_is_an_optional_external_override() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
-    preflight = re.search(
-        r"(?ms)^  preflight:\n(?P<job>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)", workflow
-    )
+    preflight = re.search(r"(?ms)^  preflight:\n(?P<job>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)", workflow)
     deploy = re.search(r"(?ms)^  deploy:\n(?P<job>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)", workflow)
     assert preflight is not None
     assert deploy is not None
