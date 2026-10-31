@@ -1,0 +1,178 @@
+name: Promote lambda-auth
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Stage to promote
+        required: true
+        type: choice
+        options: [hml, prd]
+      confirmation:
+        description: Type PROMOTE to confirm the selected stage
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lambda-auth-promotion-${{ inputs.stage }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    steps:
+      - name: Validate explicit promotion and complete stage configuration
+        shell: bash
+        env:
+          STAGE: ${{ inputs.stage }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DEPLOYMENT_READY: ${{ vars.LAMBDA_DEPLOYMENT_READY }}
+          DEPLOY_ROLE_ARN: ${{ vars.LAMBDA_DEPLOY_ROLE_ARN }}
+          EXPECTED_ACCOUNT_ID: ${{ vars.LAMBDA_EXPECTED_AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          TF_STATE_BUCKET: ${{ vars.LAMBDA_TF_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ vars.LAMBDA_TF_STATE_KEY }}
+          DATABASE_SECRET_ID: ${{ vars.LAMBDA_DATABASE_SECRET_ID }}
+          JWT_KMS_KEY_ARN: ${{ vars.LAMBDA_JWT_KMS_KEY_ARN }}
+          JWT_KID: ${{ vars.LAMBDA_JWT_KID }}
+          JWT_ISSUER: ${{ vars.LAMBDA_JWT_ISSUER }}
+          JWT_AUDIENCE: ${{ vars.LAMBDA_JWT_AUDIENCE }}
+          PRIVATE_SUBNET_IDS: ${{ vars.LAMBDA_PRIVATE_SUBNET_IDS }}
+          SECURITY_GROUP_IDS: ${{ vars.LAMBDA_SECURITY_GROUP_IDS }}
+          SSM_PARAMETER_NAME: ${{ vars.LAMBDA_SSM_PARAMETER_NAME }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          [[ "$STAGE" == "hml" || "$STAGE" == "prd" ]]
+          test "$CONFIRMATION" = "PROMOTE"
+          test "$DEPLOYMENT_READY" = "true"
+          [[ "$EXPECTED_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]
+          [[ "$DEPLOY_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_ACCOUNT_ID}:role/.+ ]]
+          test -n "$AWS_REGION"
+          test -n "$TF_STATE_BUCKET"
+          test -n "$TF_STATE_KEY"
+          test -n "$JWT_KMS_KEY_ARN"
+          test -n "$JWT_KID"
+          test -n "$PRIVATE_SUBNET_IDS"
+          test -n "$SECURITY_GROUP_IDS"
+
+          expected_state_key="lambda-auth/${STAGE}/terraform.tfstate"
+          test "$TF_STATE_KEY" = "$expected_state_key"
+
+          case "$STAGE" in
+            hml)
+              expected_secret="auto-shop/staging/hml/lambda-auth"
+              expected_ssm="/auto-shop/staging/auth/customer-token/function-arn/hml"
+              ;;
+            prd)
+              expected_secret="auto-shop/staging/prd/lambda-auth"
+              expected_ssm="/auto-shop/staging/auth/customer-token/function-arn/prd"
+              ;;
+          esac
+          test "$DATABASE_SECRET_ID" = "$expected_secret"
+          test "$SSM_PARAMETER_NAME" = "$expected_ssm"
+          test "$JWT_ISSUER" = "https://api.oficina-workshop.com.br"
+          test "$JWT_AUDIENCE" = "auto-shop-api"
+
+          echo "Promotion preflight passed for ${STAGE}; no AWS credentials were requested in this job."
+
+  deploy:
+    needs: preflight
+    if: needs.preflight.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_ACCOUNT_ID: ${{ vars.LAMBDA_EXPECTED_AWS_ACCOUNT_ID }}
+      LAMBDA_TF_STATE_BUCKET: ${{ vars.LAMBDA_TF_STATE_BUCKET }}
+      LAMBDA_TF_STATE_KEY: ${{ vars.LAMBDA_TF_STATE_KEY }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_expected_account_id: ${{ vars.LAMBDA_EXPECTED_AWS_ACCOUNT_ID }}
+      TF_VAR_environment: ${{ inputs.stage }}
+      TF_VAR_lambda_package_path: ../../dist/lambda-auth.zip
+      TF_VAR_database_secret_id: ${{ vars.LAMBDA_DATABASE_SECRET_ID }}
+      TF_VAR_database_secret_kms_key_arn: ${{ vars.LAMBDA_DATABASE_SECRET_KMS_KEY_ARN }}
+      TF_VAR_jwt_kms_key_arn: ${{ vars.LAMBDA_JWT_KMS_KEY_ARN }}
+      TF_VAR_jwt_kid: ${{ vars.LAMBDA_JWT_KID }}
+      TF_VAR_jwt_additional_public_keys: ${{ vars.LAMBDA_JWT_ADDITIONAL_PUBLIC_KEYS_JSON || '[]' }}
+      TF_VAR_jwt_issuer: ${{ vars.LAMBDA_JWT_ISSUER }}
+      TF_VAR_jwt_audience: ${{ vars.LAMBDA_JWT_AUDIENCE }}
+      TF_VAR_private_subnet_ids: ${{ vars.LAMBDA_PRIVATE_SUBNET_IDS }}
+      TF_VAR_security_group_ids: ${{ vars.LAMBDA_SECURITY_GROUP_IDS }}
+      TF_VAR_function_arn_ssm_parameter_name: ${{ vars.LAMBDA_SSM_PARAMETER_NAME }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Build Lambda deployment package
+        run: |
+          python -m pip install --no-compile --target build/lambda .
+          mkdir -p dist
+          cd build/lambda
+          zip -q -r ../../dist/lambda-auth.zip .
+          test -s ../../dist/lambda-auth.zip
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.LAMBDA_DEPLOY_ROLE_ARN }}
+          role-session-name: lambda-auth-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.LAMBDA_EXPECTED_AWS_ACCOUNT_ID }}
+
+      - name: Verify the assumed AWS account
+        run: test "$(aws sts get-caller-identity --query Account --output text)" = "$EXPECTED_ACCOUNT_ID"
+
+      - name: Initialize stage-specific remote state
+        working-directory: infra/terraform
+        env:
+          STATE_KMS_KEY_ARN: ${{ vars.LAMBDA_TF_STATE_KMS_KEY_ARN }}
+        run: |
+          set -euo pipefail
+          backend_config=(
+            "-backend-config=bucket=${LAMBDA_TF_STATE_BUCKET}"
+            "-backend-config=key=${LAMBDA_TF_STATE_KEY}"
+            "-backend-config=region=${AWS_REGION}"
+            "-backend-config=expected_bucket_owner=${EXPECTED_ACCOUNT_ID}"
+            "-backend-config=encrypt=true"
+            "-backend-config=use_lockfile=true"
+          )
+          if [[ -n "$STATE_KMS_KEY_ARN" ]]; then
+            backend_config+=("-backend-config=kms_key_id=${STATE_KMS_KEY_ARN}")
+          fi
+          terraform init -input=false -lockfile=readonly "${backend_config[@]}"
+
+      - name: Create Terraform plan
+        working-directory: infra/terraform
+        run: terraform plan -input=false -no-color -out=tfplan
+
+      - name: Reject out-of-scope or destructive changes
+        working-directory: infra/terraform
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan > tfplan.json
+          python ../../scripts/check_terraform_plan.py tfplan.json
+
+      - name: Apply guarded Terraform plan
+        working-directory: infra/terraform
+        run: terraform apply -input=false -no-color -auto-approve tfplan

@@ -64,9 +64,11 @@ O TTL aceita valores entre 1 e 900 segundos e usa 900 por padrão. O endpoint de
 
 O endpoint falha por inteiro com `503` se qualquer chave configurada não puder ser publicada. Isso evita entregar um JWKS parcial que invalidaria tokens ainda aceitos durante a transição.
 
-## Preparação de infraestrutura
+## Preparação e implantação de infraestrutura
 
-O módulo Terraform em [`infra/terraform`](infra/terraform/README.md) configura a Lambda, a role com permissões mínimas, a retenção de logs e o parâmetro SSM com o ARN da função. Para os stages `hml` e `prd`, os nomes padrão das funções são `lambda-auth-hml` e `lambda-auth-prd`; os ARNs são publicados, respectivamente, em `/auto-shop/staging/auth/customer-token/function-arn/hml` e `/auto-shop/staging/auth/customer-token/function-arn/prd`. Use um state Terraform separado para cada stage. Conta, região, segredo, chave KMS, rede e contrato JWT são entradas que precisam ser confirmadas com a equipe responsável antes de provisionar. O CI valida e empacota o serviço sem credenciais AWS; nenhuma função ou recurso AWS é criado por ele.
+O módulo Terraform em [`infra/terraform`](infra/terraform/README.md) configura a Lambda, a role com permissões mínimas, a retenção de logs e o parâmetro SSM com o ARN da função. Para os stages `hml` e `prd`, os nomes padrão das funções são `lambda-auth-hml` e `lambda-auth-prd`; os ARNs são publicados, respectivamente, em `/auto-shop/staging/auth/customer-token/function-arn/hml` e `/auto-shop/staging/auth/customer-token/function-arn/prd`. Use um state Terraform separado para cada stage. Conta, região, segredo, chave KMS, rede e contrato JWT são entradas que precisam ser confirmadas com a equipe responsável antes de provisionar.
+
+O CI padrão valida e empacota sem credenciais AWS. A workflow manual [`Promote lambda-auth`](.github/workflows/deploy-lambda.yml) é separada e falha fechada até que o Environment selecionado tenha todos os valores aprovados, `LAMBDA_DEPLOYMENT_READY=true`, um role OIDC revisado e state S3 exclusivo. Ela exige execução em `main`, seleção explícita de `hml` ou `prd` e confirmação `PROMOTE`. Antes do `apply`, aceita apenas alterações não destrutivas nos recursos Lambda, IAM de execução, CloudWatch Logs e SSM. A workflow não publica o plano como artefato. Não habilite o gate com o role genérico atual enquanto ele tiver `PowerUserAccess`; a policy da identidade de implantação precisa ser revisada e reduzida primeiro.
 
 A restrição Terraform a `hml`/`prd` se aplica apenas aos deployments AWS. O handler local continua usando configuração de processo, por exemplo `DATABASE_URL` em desenvolvimento, sem exigir um stage Terraform.
 
