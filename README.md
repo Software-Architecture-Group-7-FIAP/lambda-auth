@@ -102,7 +102,18 @@ python -m pytest --cov=lambda_auth --cov-report=term-missing --cov-fail-under=80
 
 A mesma sequência roda na CI para pushes e pull requests. A CI só tem permissão de leitura do conteúdo do repositório e não acessa a AWS.
 
-Pipeline: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (cenário 4 da [#89](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/89)); deploy AWS manual via [`.github/workflows/deploy-lambda.yml`](.github/workflows/deploy-lambda.yml) quando autorizado.
+## CI/CD ([auto-shop-system#89](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/89) — cenário 4)
+
+Pipeline **independente** (gateway / Lambda): sem checkout de outros repositórios e sem `workflow_call` cross-repo.
+
+| Job | Validação |
+| --- | --- |
+| `quality` | `dist/lambda-auth.zip` por commit, Ruff, pytest (cobertura ≥ 80%) |
+| `terraform-static-validation` | `terraform fmt` / `validate` offline em `infra/terraform`; `check_aws_credentials_absent.py` — sem plan/apply/OIDC |
+
+Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Template de referência: [`auto-shop-system` — `gateway-ci.yml`](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/.github/ecosystem-templates/gateway-ci.yml) (este repo usa `pyproject.toml` + `[dev]`).
+
+Deploy AWS: [`.github/workflows/deploy-lambda.yml`](.github/workflows/deploy-lambda.yml) (manual, quando autorizado). O zip do job `quality` amarra o artefato ao SHA do commit (cenário 5).
 
 ## Ecossistema (#95)
 
