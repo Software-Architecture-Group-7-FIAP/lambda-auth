@@ -1,13 +1,44 @@
 locals {
   deployed_function_name = "${var.function_name}-${var.environment}"
+  deployed_function_arn  = "arn:aws:lambda:${var.aws_region}:${var.expected_account_id}:function:${local.deployed_function_name}"
+  effective_jwt_kms_key_arn = var.jwt_kms_key_arn != "" ? (
+    var.jwt_kms_key_arn
+  ) : aws_kms_key.jwt_signing[0].arn
   cors_allowed_origin_by_environment = {
     hml = "https://app-hml.oficina-workshop.com.br"
     prd = "https://app.oficina-workshop.com.br"
+    dev = ""
   }
   jwt_public_key_arns = distinct(concat(
-    [var.jwt_kms_key_arn],
+    [local.effective_jwt_kms_key_arn],
     [for key in var.jwt_additional_public_keys : key.kms_key_id],
   ))
+  database_secret_resource_arn = startswith(var.database_secret_id, "arn:") ? (
+    replace(var.database_secret_id, "/-[A-Za-z0-9]{6}$/", "-*")
+  ) : "arn:aws:secretsmanager:${var.aws_region}:${var.expected_account_id}:secret:${var.database_secret_id}-*"
+}
+
+resource "aws_kms_key" "jwt_signing" {
+  count = var.jwt_kms_key_arn == "" ? 1 : 0
+
+  description              = "RS256 token signing key for ${var.environment} lambda-auth"
+  customer_master_key_spec = "RSA_2048"
+  key_usage                = "SIGN_VERIFY"
+  deletion_window_in_days  = 7
+
+  tags = {
+    Name      = "auto-shop-${var.environment}-lambda-auth-jwt-signing"
+    Project   = "auto-shop-system"
+    Component = "lambda-auth"
+    Purpose   = "rs256-signing"
+  }
+}
+
+resource "aws_kms_alias" "jwt_signing" {
+  count = var.jwt_kms_key_arn == "" ? 1 : 0
+
+  name          = "alias/auto-shop/${var.environment}/lambda-auth/jwt-signing"
+  target_key_id = aws_kms_key.jwt_signing[0].key_id
 }
 
 data "aws_iam_policy_document" "lambda_assume_role" {
@@ -17,6 +48,18 @@ data "aws_iam_policy_document" "lambda_assume_role" {
     principals {
       type        = "Service"
       identifiers = ["lambda.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [var.expected_account_id]
+    }
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [local.deployed_function_arn]
     }
   }
 }
@@ -31,13 +74,13 @@ data "aws_iam_policy_document" "lambda_runtime" {
   statement {
     sid       = "ReadDatabaseSecret"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.database_secret_arn]
+    resources = [local.database_secret_resource_arn]
   }
 
   statement {
     sid       = "SignTokens"
     actions   = ["kms:Sign"]
-    resources = [var.jwt_kms_key_arn]
+    resources = [local.effective_jwt_kms_key_arn]
   }
 
   statement {
@@ -79,8 +122,10 @@ resource "aws_cloudwatch_log_group" "function" {
 }
 
 resource "aws_iam_role" "function" {
-  name               = "${local.deployed_function_name}-execution"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  name                 = "${local.deployed_function_name}-execution"
+  path                 = "/auto-shop/"
+  permissions_boundary = "arn:aws:iam::${var.expected_account_id}:policy/auto-shop/auto-shop-boundary"
+  assume_role_policy   = data.aws_iam_policy_document.lambda_assume_role.json
 }
 
 resource "aws_iam_role_policy" "function" {
@@ -104,13 +149,13 @@ resource "aws_lambda_function" "function" {
 
   environment {
     variables = {
-      DATABASE_SECRET_ARN             = var.database_secret_arn
+      DATABASE_SECRET_ID              = var.database_secret_id
       CORS_ALLOWED_ORIGIN             = local.cors_allowed_origin_by_environment[var.environment]
       JWT_AUDIENCE                    = var.jwt_audience
       JWT_ADDITIONAL_PUBLIC_KEYS_JSON = jsonencode(var.jwt_additional_public_keys)
       JWT_ISSUER                      = var.jwt_issuer
       JWT_KID                         = var.jwt_kid
-      JWT_KMS_KEY_ID                  = var.jwt_kms_key_arn
+      JWT_KMS_KEY_ID                  = local.effective_jwt_kms_key_arn
       JWT_TTL_SECONDS                 = tostring(var.jwt_ttl_seconds)
       LOG_LEVEL                       = "WARNING"
     }
@@ -138,9 +183,21 @@ resource "aws_lambda_function" "function" {
   }
 }
 
-resource "aws_ssm_parameter" "customer_token_function_arn" {
-  name        = "/auto-shop/staging/auth/customer-token/function-arn/${var.environment}"
-  description = "ARN da Lambda de token cliente no stage ${var.environment}."
+resource "aws_ssm_parameter" "function_arn" {
+  count = var.function_arn_ssm_parameter_name == "" ? 0 : 1
+
+  name        = var.function_arn_ssm_parameter_name
+  description = "ARN da Lambda de autenticação de clientes."
   type        = "String"
   value       = aws_lambda_function.function.arn
+
+  lifecycle {
+    precondition {
+      condition = (
+        (var.environment == "hml" && var.function_arn_ssm_parameter_name == "/auto-shop/staging/auth/customer-token/function-arn/hml") ||
+        (var.environment == "prd" && var.function_arn_ssm_parameter_name == "/auto-shop/staging/auth/customer-token/function-arn/prd")
+      )
+      error_message = "When publishing the Lambda ARN, hml must use the hml path and prd must use the prd path; dev cannot use either application path."
+    }
+  }
 }

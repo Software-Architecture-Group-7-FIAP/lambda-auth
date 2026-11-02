@@ -20,21 +20,21 @@ def test_provider_reads_database_url_from_secret_json() -> None:
         json.dumps({"DATABASE_URL": "postgresql://localhost/auto_shop"})
     )
     provider = SecretsManagerDatabaseUrl(
-        "secret-arn",
+        "auto-shop/staging/hml/lambda-auth",
         "us-east-1",
         secrets_client=client,
         clock=lambda: 10.0,
     )
 
     assert provider.get_database_url() == "postgresql://localhost/auto_shop"
-    assert client.calls == ["secret-arn"]
+    assert client.calls == ["auto-shop/staging/hml/lambda-auth"]
 
 
 def test_provider_caches_secret_for_five_minutes_and_refreshes_after_expiry() -> None:
     client = FakeSecretsManagerClient("postgresql://localhost/auto_shop")
     clock_value = {"now": 100.0}
     provider = SecretsManagerDatabaseUrl(
-        "secret-arn",
+        "auto-shop/staging/hml/lambda-auth",
         "us-east-1",
         secrets_client=client,
         clock=lambda: clock_value["now"],
@@ -43,11 +43,14 @@ def test_provider_caches_secret_for_five_minutes_and_refreshes_after_expiry() ->
     assert provider.get_database_url() == "postgresql://localhost/auto_shop"
     clock_value["now"] += 299
     assert provider.get_database_url() == "postgresql://localhost/auto_shop"
-    assert client.calls == ["secret-arn"]
+    assert client.calls == ["auto-shop/staging/hml/lambda-auth"]
 
     clock_value["now"] += 2
     assert provider.get_database_url() == "postgresql://localhost/auto_shop"
-    assert client.calls == ["secret-arn", "secret-arn"]
+    assert client.calls == [
+        "auto-shop/staging/hml/lambda-auth",
+        "auto-shop/staging/hml/lambda-auth",
+    ]
 
 
 def test_provider_rejects_invalid_secret_without_exposing_its_value() -> None:

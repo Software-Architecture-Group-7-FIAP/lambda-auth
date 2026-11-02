@@ -2,6 +2,16 @@
 
 Serviço de autenticação de clientes por CPF, preparado para AWS Lambda. O endpoint `POST /auth/customer/token` valida o CPF, verifica se o cliente está ativo e emite um JWT.
 
+Decisões relacionadas no repositório `auto-shop-system`: [RFC-0003](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/rfc/RFC-0003-autenticacao-cliente-cpf-jwt.md) (autenticação de cliente por CPF e JWT), [ADR-0064](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/decisions/ADR-0064-autenticacao-cliente-cpf-jwt.md) (contrato JWT RS256/KMS + JWKS), [ADR-0072](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/decisions/ADR-0072-matriz-jwt-audiencias.md) (matriz de audiências JWT web/gateway/customer) e [ADR-0071](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md) (topologia dos quatro repositórios).
+
+## Contratos da API integrada
+
+- OpenAPI da aplicação FastAPI: [auto-shop-system/docs/api/openapi.json](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/api/openapi.json)
+- Coleção Postman da aplicação, API Gateway e Lambda: [auto-shop-system/docs/api/auto-shop.postman_collection.json](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/api/auto-shop.postman_collection.json)
+- Ambientes Postman sem credenciais: [HML](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/api/auto-shop-hml.postman_environment.json) · [PRD](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/api/auto-shop-prd.postman_environment.json)
+
+O OpenAPI é gerado a partir da aplicação FastAPI. As rotas desta Lambda e do API Gateway estão descritas na coleção Postman. Preencha URLs e dados sintéticos somente no ambiente local do Postman; não versione CPF, senha ou token.
+
 ## Arquitetura
 
 - `src/lambda_auth/handler.py` é o entrypoint da Lambda e compõe os componentes.
@@ -34,7 +44,7 @@ python -m pip install -e ".[dev]"
 
 ## Configuração local
 
-`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente. Em desenvolvimento local, use `DATABASE_URL` no ambiente. Na Lambda, informe `DATABASE_SECRET_ARN`; o handler busca a URL no Secrets Manager e mantém um cache em memória por cinco minutos. A Function precisa de `JWT_KMS_KEY_ID`, `JWT_KID`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS` e `AWS_REGION` para emitir tokens RS256 com KMS. `CORS_ALLOWED_ORIGIN` define a origem exata permitida para o endpoint de token: `https://app-hml.oficina-workshop.com.br` em `hml` e `https://app.oficina-workshop.com.br` em `prd`. O preflight `OPTIONS` retorna `204`; cabeçalhos de permissão são incluídos somente quando `Origin` coincide exatamente com a origem configurada, e respostas do endpoint variam por `Origin`. O emissor e a audiência do exemplo são placeholders e devem coincidir com a configuração do consumidor.
+`.env.example` lista as variáveis sem credenciais ou segredos. O processo lê variáveis diretamente do ambiente; o arquivo não é carregado automaticamente. Em desenvolvimento local, use `DATABASE_URL` no ambiente. Na Lambda, informe `DATABASE_SECRET_ID`; o handler busca a URL no Secrets Manager pelo nome estável e mantém um cache em memória por cinco minutos. HML e PRD usam os nomes `auto-shop/staging/hml/lambda-auth` e `auto-shop/staging/prd/lambda-auth`; isso mantém a leitura funcionando quando o recurso diário é recriado e seu ARN recebe outro sufixo. A policy IAM limita `GetSecretValue` ao nome configurado, incluindo o sufixo gerado pelo Secrets Manager. A Function precisa de `JWT_KMS_KEY_ID`, `JWT_KID`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS` e `AWS_REGION` para emitir tokens RS256 com KMS. `CORS_ALLOWED_ORIGIN` define a origem exata permitida para o endpoint de token: `https://app-hml.oficina-workshop.com.br` em `hml` e `https://app.oficina-workshop.com.br` em `prd`. O preflight `OPTIONS` retorna `204`; cabeçalhos de permissão são incluídos somente quando `Origin` coincide exatamente com a origem configurada, e respostas do endpoint variam por `Origin`. O emissor e a audiência do exemplo são placeholders e devem coincidir com a configuração do consumidor.
 
 `JWT_ADDITIONAL_PUBLIC_KEYS_JSON` aceita uma lista JSON de objetos `{ "kid": "...", "kms_key_id": "..." }`. Essas chaves aparecem no JWKS para permitir rotação, mas nunca são usadas para assinar. O padrão `[]` mantém compatibilidade com a configuração de chave única. Identificadores vazios, campos extras e `kid` repetido — inclusive o `kid` ativo — fazem a inicialização falhar sem reproduzir o valor recebido.
 
@@ -56,9 +66,11 @@ O TTL aceita valores entre 1 e 900 segundos e usa 900 por padrão. O endpoint de
 
 O endpoint falha por inteiro com `503` se qualquer chave configurada não puder ser publicada. Isso evita entregar um JWKS parcial que invalidaria tokens ainda aceitos durante a transição.
 
-## Preparação de infraestrutura
+## Preparação e implantação de infraestrutura
 
-O módulo Terraform em [`infra/terraform`](infra/terraform/README.md) configura a Lambda, a role com permissões mínimas, a retenção de logs e o parâmetro SSM com o ARN da função. Para os stages `hml` e `prd`, os nomes padrão das funções são `lambda-auth-hml` e `lambda-auth-prd`; os ARNs são publicados, respectivamente, em `/auto-shop/staging/auth/customer-token/function-arn/hml` e `/auto-shop/staging/auth/customer-token/function-arn/prd`. Use um state Terraform separado para cada stage. Conta, região, segredo, chave KMS, rede e contrato JWT são entradas que precisam ser confirmadas com a equipe responsável antes de provisionar. O CI valida e empacota o serviço sem credenciais AWS; nenhuma função ou recurso AWS é criado por ele.
+O módulo Terraform em [`infra/terraform`](infra/terraform/README.md) configura a Lambda, a role com permissões mínimas, a retenção de logs e o parâmetro SSM com o ARN da função. Para os stages `hml` e `prd`, os nomes padrão das funções são `lambda-auth-hml` e `lambda-auth-prd`; os ARNs são publicados, respectivamente, em `/auto-shop/staging/auth/customer-token/function-arn/hml` e `/auto-shop/staging/auth/customer-token/function-arn/prd`. Use um state Terraform separado para cada stage. Conta, região, segredo, chave KMS, rede e contrato JWT são entradas que precisam ser confirmadas com a equipe responsável antes de provisionar.
+
+O CI padrão valida e empacota sem credenciais AWS. A workflow manual [`Promote lambda-auth`](.github/workflows/deploy-lambda.yml) é separada e falha fechada até que o Environment selecionado tenha todos os valores aprovados, `LAMBDA_DEPLOYMENT_READY=true`, um role OIDC revisado e state S3 exclusivo. Ela exige execução em `main`, seleção explícita de `hml` ou `prd` e confirmação `PROMOTE`. Antes do `apply`, aceita apenas alterações não destrutivas nos recursos Lambda, IAM de execução, CloudWatch Logs e SSM. A workflow não publica o plano como artefato. Não habilite o gate com o role genérico atual enquanto ele tiver `PowerUserAccess`; a policy da identidade de implantação precisa ser revisada e reduzida primeiro.
 
 A restrição Terraform a `hml`/`prd` se aplica apenas aos deployments AWS. O handler local continua usando configuração de processo, por exemplo `DATABASE_URL` em desenvolvimento, sem exigir um stage Terraform.
 
@@ -101,4 +113,12 @@ Pipeline **independente** (gateway / Lambda): sem checkout de outros repositóri
 
 Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Template de referência: [`auto-shop-system` — `gateway-ci.yml`](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/.github/ecosystem-templates/gateway-ci.yml) (este repo usa `pyproject.toml` + `[dev]`).
 
-Deploy AWS permanece fora do CI de PR (Terraform/manual). O zip gerado no job `quality` amarra o artefato ao SHA do commit (cenário 5).
+Deploy AWS: [`.github/workflows/deploy-lambda.yml`](.github/workflows/deploy-lambda.yml) (manual, quando autorizado). O zip do job `quality` amarra o artefato ao SHA do commit (cenário 5).
+
+## Referências de arquitetura
+
+As decisões que cruzam os quatro repositórios estão centralizadas na documentação do [auto-shop-system](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/diagramas-fase-3.md).
+
+- [RFC-0003: CPF, JWT RS256, KMS e JWKS](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/rfc/RFC-0003-autenticacao-cliente-cpf-jwt.md)
+- [ADR-0064: autenticação de cliente](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/decisions/ADR-0064-autenticacao-cliente-cpf-jwt.md)
+- [Justificativa do PostgreSQL e modelo ER](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/justificativa-banco-postgresql.md)

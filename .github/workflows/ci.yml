@@ -73,3 +73,6 @@ jobs:
 
       - name: Validate Terraform configuration
         run: terraform validate -no-color
+
+      - name: Run offline Terraform contract tests
+        run: terraform test -no-color
