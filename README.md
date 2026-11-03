@@ -101,6 +101,39 @@ python -m pytest --cov=lambda_auth --cov-report=term-missing --cov-fail-under=80
 ```
 
 A mesma sequência roda na CI para pushes e pull requests. A CI só tem permissão de leitura do conteúdo do repositório e não acessa a AWS.
+
+## CI/CD ([auto-shop-system#89](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/89) — cenário 4)
+
+Pipeline **independente** (gateway / Lambda): sem checkout de outros repositórios e sem `workflow_call` cross-repo.
+
+| Job | Validação |
+| --- | --- |
+| `quality` | `dist/lambda-auth.zip` por commit, Ruff, pytest (cobertura ≥ 80%) |
+| `terraform-static-validation` | `terraform fmt` / `validate` offline em `infra/terraform`; `check_aws_credentials_absent.py` — sem plan/apply/OIDC |
+
+Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Template de referência: [`auto-shop-system` — `gateway-ci.yml`](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/.github/ecosystem-templates/gateway-ci.yml) (este repo usa `pyproject.toml` + `[dev]`).
+
+Deploy AWS: [`.github/workflows/deploy-lambda.yml`](.github/workflows/deploy-lambda.yml) (manual, quando autorizado). O zip do job `quality` amarra o artefato ao SHA do commit (cenário 5).
+
+## Ecossistema (#95)
+
+| Repositório | Papel |
+| --- | --- |
+| [auto-shop-system](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system) | Backend, frontend, API Gateway, deploy K8s |
+| **lambda-auth** (este) | JWT cliente (CPF) + JWKS |
+| [database-infra](https://github.com/Software-Architecture-Group-7-FIAP/database-infra) | RDS PostgreSQL staging |
+| [k8s-infra](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra) | VPC, EKS, ALB interno |
+
+| Recurso global | Link |
+| --- | --- |
+| README operacional (monorepo) | [auto-shop-system/README.md](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/README.md) |
+| Diagrama operacional | [fase-operacional.mmd](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/fase-operacional.mmd) |
+| Índice ADRs / diagramas | [docs/architecture/README.md](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/README.md) |
+| RFCs (Gateway, deploy, observabilidade) | [docs/rfc/README.md](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/rfc/README.md) |
+| Observabilidade — handoff Lambda | [lambda-auth-new-relic-handoff.md](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/lambda-auth-new-relic-handoff.md) |
+| Runbooks | [docs/runbooks/README.md](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/runbooks/README.md) |
+| Templates CI (#89) | [ecosystem-templates](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/.github/ecosystem-templates/README.md) |
+
 ## Referências de arquitetura
 
 As decisões que cruzam os quatro repositórios estão centralizadas na documentação do [auto-shop-system](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/architecture/diagramas-fase-3.md).
